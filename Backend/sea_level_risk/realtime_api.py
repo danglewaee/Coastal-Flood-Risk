@@ -21,11 +21,11 @@ DEFAULT_SCENARIOS_M = [0.2, 0.5, 1.0]
 
 
 def _risk_label(flood_ratio: float) -> str:
-    if flood_ratio < 0.02:
+    if flood_ratio < 0.001:
         return "low"
-    if flood_ratio < 0.08:
+    if flood_ratio < 0.01:
         return "moderate"
-    if flood_ratio < 0.2:
+    if flood_ratio < 0.05:
         return "high"
     return "critical"
 
@@ -161,6 +161,10 @@ class RealtimeService:
                         "scenario_water_level_m": level,
                         "flood_area_m2": flood["flood_area_m2"],
                         "flood_ratio": flood["flood_ratio"],
+                        "component_count": flood.get("component_count", 0),
+                        "candidate_flood_pixels": flood.get("candidate_flood_pixels", 0),
+                        "land_pixels": flood.get("land_pixels", 0),
+                        "processing_mode": flood.get("processing_mode", "unknown"),
                         "risk_level": _risk_label(flood["flood_ratio"]),
                         "geojson": str(geojson),
                     }

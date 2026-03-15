@@ -31,7 +31,7 @@ def render_maps(outputs_dir: Path) -> list[str]:
             ax.text(0.5, 0.5, "No flooded polygon", ha="center", va="center")
             ax.set_axis_off()
         else:
-            gdf.plot(ax=ax, color=scenario_colors.get(scenario, "#457b9d"), edgecolor="black", linewidth=0.5)
+            gdf.plot(ax=ax, color=scenario_colors.get(scenario, "#457b9d"), edgecolor="none", alpha=0.75)
             ax.set_title(f"Flood Risk Map - {scenario.replace('plus_', '+').replace('cm', ' cm')}")
             ax.set_xlabel("Longitude")
             ax.set_ylabel("Latitude")
@@ -70,18 +70,19 @@ def generate_report(outputs_dir: Path) -> Path:
     lines.append("")
     lines.append("## Scenario Impact")
     lines.append("")
-    lines.append("| Scenario | Water level (m) | Flood area (m2) |")
-    lines.append("|---|---:|---:|")
+    lines.append("| Scenario | Water level (m) | Flood area (m2) | Flood ratio | Components |")
+    lines.append("|---|---:|---:|---:|---:|")
 
     for _, row in scenarios.iterrows():
         lines.append(
-            f"| {row['scenario']} | {row['scenario_water_level_m']:.6f} | {row['flood_area_m2']:.6f} |"
+            f"| {row['scenario']} | {row['scenario_water_level_m']:.6f} | {row['flood_area_m2']:.6f} | {row.get('flood_ratio', 0.0):.6f} | {int(row.get('component_count', 0))} |"
         )
 
     lines.append("")
     lines.append("## Notes")
     lines.append("- Scenario levels are computed from forecasted peak + {20, 50, 100} cm.")
-    lines.append("- Flood polygons are created by thresholding DEM elevation against scenario water level.")
+    lines.append("- Flood polygons are generated from DEM cells where elevation is above 0 m and below the scenario water level.")
+    lines.append("- Only coast-connected flood components are kept, then small polygons are filtered and geometries are cleaned for QGIS/reporting.")
 
     out_md = outputs_dir / "results_summary.md"
     out_md.write_text("\n".join(lines), encoding="utf-8")

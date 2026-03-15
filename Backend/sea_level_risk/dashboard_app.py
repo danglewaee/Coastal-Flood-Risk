@@ -135,7 +135,11 @@ if run:
             cA, cB, cC = st.columns([1.2, 1, 4])
             cA.markdown(f"**{s['scenario']}**")
             cB.markdown(risk_badge(s.get("risk_level", "unknown")), unsafe_allow_html=True)
-            cC.markdown(f"`{float(s.get('flood_ratio', 0.0))*100:.2f}%` flooded | `{float(s.get('flood_area_m2', 0.0)):,.0f} m2`")
+            cC.markdown(
+                f"`{float(s.get('flood_ratio', 0.0))*100:.2f}%` flooded | "
+                f"`{float(s.get('flood_area_m2', 0.0)):,.0f} m2` | "
+                f"`{int(s.get('component_count', 0))}` coastal components"
+            )
 
     with st.expander("Raw JSON"):
         st.json(payload)

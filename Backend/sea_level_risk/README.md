@@ -45,6 +45,40 @@ Dashboard cho phep:
 - Ve forecast line
 - Render ban do ngap 3D theo scenario (+20/+50/+100cm)
 
+## GIS logic
+- DEM cells are treated as land only when `elevation > 0 m`.
+- Flood scenarios are built from `0 < DEM <= scenario_water_level`.
+- Only coast-connected components are kept.
+- Small polygons are filtered, then geometries are cleaned before exporting GeoJSON/GPKG.
+- For steep locations like Honolulu, `+50 cm` and even `+1 m` can still appear as narrow coastal strips. That is expected for a simple DEM-threshold workflow.
+
+## Rebuild GIS outputs after code update
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.run_pipeline \
+  --csv data/honolulu_hourly.csv \
+  --dem data/honolulu_dem.tif \
+  --value-col sea_level \
+  --time-col timestamp \
+  --model-type axial_lstm \
+  --reuse-model \
+  --horizon 6 \
+  --out Backend/sea_level_risk/outputs
+```
+
+Then regenerate summary maps:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.postprocess --out Backend/sea_level_risk/outputs
+```
+
+Create a QGIS-ready package from the cleaned outputs:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.qgis.prepare_qgis_package \
+  --city honolulu \
+  --dem data/honolulu_dem.tif \
+  --realtime-dir Backend/sea_level_risk/outputs \
+  --out-root Backend/sea_level_risk/outputs/qgis_packages
+```
+
 ## Files
 - `Backend/sea_level_risk/realtime_api.py`: realtime API
 - `Backend/sea_level_risk/dashboard_app.py`: 3D dashboard

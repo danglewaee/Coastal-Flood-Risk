@@ -80,6 +80,9 @@ def run_pipeline(
             "scenario": scenario_name,
             "scenario_water_level_m": scenario_level,
             "flood_area_m2": flood_result["flood_area_m2"],
+            "flood_ratio": flood_result.get("flood_ratio", 0.0),
+            "component_count": flood_result.get("component_count", 0),
+            "processing_mode": flood_result.get("processing_mode", "unknown"),
         }
         for e in exposures:
             row[f"{e['layer']}_intersections"] = e["intersections"]

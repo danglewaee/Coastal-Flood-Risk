@@ -48,7 +48,8 @@ def prepare_package(city: str, dem_path: str, realtime_dir: str, out_root: str) 
         "1. Add raster: layers/<dem>.tif\n"
         "2. Add vector layers from layers/*.geojson or *.gpkg\n"
         "3. Apply styles in styles/*.qml (Layer Properties -> Symbology -> Style -> Load Style).\n"
-        "4. Recommended order: dem -> flood_20 -> flood_50 -> flood_100 -> hotspots\n",
+        "4. Recommended order: dem -> flood_20 -> flood_50 -> flood_100 -> hotspots\n"
+        "5. Flood layers are coast-connected DEM threshold outputs with small polygons already filtered.\n",
         encoding="utf-8",
     )
 

@@ -20,18 +20,20 @@ sys.path.append(r"D:\CODE\Projects\Sea_Level_Rise - New ver")
 
 from Backend.sea_level_risk.qgis.create_qgis_template import create_project
 
-pkg = r"D:\CODE\Projects\Sea_Level_Rise - New ver\Backend\sea_level_risk\outputs\qgis_packages\honolulu_20260308_184339"
+pkg = r"D:\CODE\Projects\Sea_Level_Rise - New ver\Backend\sea_level_risk\outputs\qgis_packages\honolulu_20260314_014207"
 out_qgz = create_project(pkg)
 print(out_qgz)
 ```
 
 This will generate:
 - `anti_flood_template.qgz` inside the package folder.
+- A print layout named `Anti Flood Layout` with title, map, legend, and scale bar.
 
 ## What the template includes
 - Project CRS: `EPSG:4326`
 - Layer order: `dem -> flood_20 -> flood_50 -> flood_100 -> hotspots`
 - Applied `.qml` styles from `styles/`
+- A ready-to-export print layout for report screenshots
 
 ## Notes
 - Run the script inside QGIS Python Console (PyQGIS required).

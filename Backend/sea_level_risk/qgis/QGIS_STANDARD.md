@@ -1,11 +1,11 @@
 ﻿# QGIS Standardization Guide
 
-## 1) Build a QGIS package from realtime outputs
+## 1) Build a QGIS package from cleaned scenario outputs
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.qgis.prepare_qgis_package \
   --city honolulu \
   --dem data/honolulu_dem.tif \
-  --realtime-dir Backend/sea_level_risk/outputs/realtime/honolulu \
+  --realtime-dir Backend/sea_level_risk/outputs \
   --out-root Backend/sea_level_risk/outputs/qgis_packages
 ```
 
@@ -39,3 +39,4 @@ This creates:
 - Title: `Anti-Flood Priority Map - <City> - <Date>`
 - Include: legend, scale bar, north arrow, source credits.
 - Export: PNG (300 dpi) and PDF.
+- Preferred base layers: cleaned flood GeoJSON/GPKG created by the backend, not manual raster polygonization.
