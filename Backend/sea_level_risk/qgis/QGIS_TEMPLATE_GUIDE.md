@@ -13,6 +13,7 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.qgis.prepare_qgis_pack
 ```
 
 ## Step 2: Create QGIS template project
+Option A - from QGIS Python Console:
 Open QGIS -> `Plugins` -> `Python Console`, then run:
 ```python
 import sys
@@ -20,7 +21,7 @@ sys.path.append(r"D:\CODE\Projects\Sea_Level_Rise - New ver")
 
 from Backend.sea_level_risk.qgis.create_qgis_template import create_project
 
-pkg = r"D:\CODE\Projects\Sea_Level_Rise - New ver\Backend\sea_level_risk\outputs\qgis_packages\honolulu_20260314_014207"
+pkg = r"D:\CODE\Projects\Sea_Level_Rise - New ver\Backend\sea_level_risk\outputs\qgis_packages\<your_package_dir>"
 out_qgz = create_project(pkg)
 print(out_qgz)
 ```
@@ -28,6 +29,7 @@ print(out_qgz)
 This will generate:
 - `anti_flood_template.qgz` inside the package folder.
 - A print layout named `Anti Flood Layout` with title, map, legend, and scale bar.
+- Each package also includes `CREATE_TEMPLATE_IN_QGIS_CONSOLE.py` for one-line execution inside QGIS.
 
 ## What the template includes
 - Project CRS: `EPSG:4326`

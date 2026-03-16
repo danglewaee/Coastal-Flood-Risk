@@ -79,6 +79,9 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.qgis.prepare_qgis_pack
   --out-root Backend/sea_level_risk/outputs/qgis_packages
 ```
 
+Each generated package also contains `CREATE_TEMPLATE_IN_QGIS_CONSOLE.py`.
+Open QGIS Python Console and run that package-local script to create `anti_flood_template.qgz`.
+
 ## Files
 - `Backend/sea_level_risk/realtime_api.py`: realtime API
 - `Backend/sea_level_risk/dashboard_app.py`: 3D dashboard

@@ -43,6 +43,18 @@ def prepare_package(city: str, dem_path: str, realtime_dir: str, out_root: str) 
                 gdf.to_file(gpkg_path, layer=layer_name, driver="GPKG")
 
     quickstart = out_dir / "QGIS_QUICKSTART.txt"
+    repo_root = Path.cwd().resolve()
+    console_snippet = out_dir / "CREATE_TEMPLATE_IN_QGIS_CONSOLE.py"
+    console_snippet.write_text(
+        "import sys\n"
+        f"sys.path.append(r\"{repo_root}\")\n"
+        "from Backend.sea_level_risk.qgis.create_qgis_template import create_project\n"
+        f"pkg = r\"{out_dir.resolve()}\"\n"
+        "out_qgz = create_project(pkg)\n"
+        "print(out_qgz)\n",
+        encoding="utf-8",
+    )
+
     quickstart.write_text(
         "QGIS Quickstart\n"
         "1. Add raster: layers/<dem>.tif\n"
@@ -50,6 +62,12 @@ def prepare_package(city: str, dem_path: str, realtime_dir: str, out_root: str) 
         "3. Apply styles in styles/*.qml (Layer Properties -> Symbology -> Style -> Load Style).\n"
         "4. Recommended order: dem -> flood_20 -> flood_50 -> flood_100 -> hotspots\n"
         "5. Flood layers are coast-connected DEM threshold outputs with small polygons already filtered.\n",
+        encoding="utf-8",
+    )
+    quickstart.write_text(
+        quickstart.read_text(encoding="utf-8")
+        + "6. To generate anti_flood_template.qgz, open QGIS Python Console and run:\n"
+        + f"   exec(open(r\"{console_snippet.resolve()}\", encoding=\"utf-8\").read())\n",
         encoding="utf-8",
     )
 
