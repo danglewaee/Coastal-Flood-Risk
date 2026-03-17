@@ -61,6 +61,7 @@ Dashboard features:
 - render forecast line
 - render 3D flood map for `+20cm / +50cm / +100cm`
 - show provider, support tier, forecast mode, and delay notes
+- switch to `Multi-city compare` to compare Honolulu / Boston / New York / Jakarta / Amsterdam in one view
 
 ## GIS logic
 - DEM cells are treated as land only when `elevation > 0 m`.
