@@ -1,15 +1,18 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 import pandas as pd
+import pydeck as pdk
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
 try:
     from .city_registry import load_city_registry
+    from .render_2d import SCENARIO_2D_STYLE, build_2d_layers
     from .render_3d import render_3d_flood_map_multi
 except ImportError:
     from Backend.sea_level_risk.city_registry import load_city_registry
+    from Backend.sea_level_risk.render_2d import SCENARIO_2D_STYLE, build_2d_layers
     from Backend.sea_level_risk.render_3d import render_3d_flood_map_multi
 
 
@@ -40,8 +43,9 @@ with st.sidebar:
     city = st.selectbox("City", city_keys, index=default_index, format_func=lambda key: registry[key].get("display_name", key))
     horizon = st.slider("Forecast horizon (hours)", 1, 24, 6)
     hours_back = st.slider("History window (hours)", 48, 240, 96, step=24)
-    scenario = st.selectbox("3D Scenario", ["plus_20cm", "plus_50cm", "plus_100cm"], index=1)
+    scenario = st.selectbox("Scenario", ["plus_20cm", "plus_50cm", "plus_100cm"], index=1)
     show_all = st.checkbox("Overlay all scenarios", value=True)
+    map_mode = st.selectbox("Map mode", ["2D flood map", "3D terrain map", "Both"], index=0)
     camera_preset = st.selectbox("Camera", ["oblique", "top", "coastal"], index=0)
     downsample = st.slider("3D downsample", 2, 10, 4)
     zex = st.slider("Vertical exaggeration", 1.0, 8.0, 2.0, 0.5)
@@ -71,13 +75,13 @@ if run:
 
     history = payload.get("history", {})
     model_meta = payload.get("model", {})
+    source_meta = payload.get("source", {})
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("City", payload.get("display_name") or payload.get("city", "n/a"))
     c2.metric("Station", payload.get("station", "n/a"))
     c3.metric("Peak Prediction (m)", f"{payload.get('peak_prediction_m', float('nan')):.4f}")
     c4.metric("Last Obs (UTC)", history.get("last_observation_utc", "n/a"))
-    source_meta = payload.get("source", {})
     st.caption(
         f"Provider: {payload.get('provider_label', 'n/a')} | "
         f"Support: {payload.get('support_tier', 'n/a')} | "
@@ -97,29 +101,66 @@ if run:
 
     scenarios = payload.get("scenarios", [])
     scenario_map = {s["scenario"]: s for s in scenarios}
+    hotspot_geojson = Path("Backend/sea_level_risk/outputs/realtime") / city / "hotspots.geojson"
+    if scenarios and not hotspot_geojson.exists():
+        try:
+            requests.get(
+                f"{api_base.rstrip('/')}/realtime/hotspots",
+                params={"city": city, "limit": 20, "horizon": horizon, "hours_back": hours_back, "datum": "MSL"},
+                timeout=180,
+            )
+        except Exception:
+            pass
+
+    if show_all:
+        items = [
+            {
+                "scenario": s["scenario"],
+                "flood_geojson": s["geojson"],
+                "water_level_m": s.get("scenario_water_level_m"),
+            }
+            for s in scenarios
+        ]
+        map_name = "map3d_all_scenarios.html"
+    else:
+        s_obj = scenario_map.get(scenario)
+        items = [] if s_obj is None else [{
+            "scenario": s_obj["scenario"],
+            "flood_geojson": s_obj["geojson"],
+            "water_level_m": s_obj.get("scenario_water_level_m"),
+        }]
+        map_name = f"map3d_{scenario}.html"
+
+    if scenarios and map_mode in {"2D flood map", "Both"}:
+        st.subheader("2D Flood Map")
+        layers, view_state = build_2d_layers(items, hotspot_geojson=str(hotspot_geojson) if hotspot_geojson.exists() else None)
+        if layers and view_state:
+            deck = pdk.Deck(
+                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                initial_view_state=view_state,
+                layers=layers,
+                tooltip={
+                    "html": "<b>{scenario_label}</b><br/>Risk: {risk_level}<br/>Priority: {priority_score}",
+                    "style": {"backgroundColor": "steelblue", "color": "white"},
+                },
+            )
+            st.pydeck_chart(deck, use_container_width=True)
+            legend_parts = []
+            for key in ["plus_20cm", "plus_50cm", "plus_100cm"]:
+                style = SCENARIO_2D_STYLE[key]
+                legend_parts.append(
+                    f"<span style='display:inline-block;width:12px;height:12px;background:rgba({style['rgba'][0]},{style['rgba'][1]},{style['rgba'][2]},0.8);margin-right:6px;border-radius:2px;'></span>{style['label']}"
+                )
+            st.markdown(" | ".join(legend_parts), unsafe_allow_html=True)
+            if hotspot_geojson.exists():
+                st.caption("Red points mark automatically ranked coastal hotspots.")
+        else:
+            st.warning("2D map could not be built from the current scenario outputs.")
 
     dem_path = payload.get("dem_path")
-    if dem_path and Path(dem_path).exists() and scenarios:
-        if show_all:
-            items = [
-                {
-                    "scenario": s["scenario"],
-                    "flood_geojson": s["geojson"],
-                    "water_level_m": s.get("scenario_water_level_m"),
-                }
-                for s in scenarios
-            ]
-            map_name = "map3d_all_scenarios.html"
-        else:
-            s_obj = scenario_map.get(scenario)
-            items = [] if s_obj is None else [{
-                "scenario": s_obj["scenario"],
-                "flood_geojson": s_obj["geojson"],
-                "water_level_m": s_obj.get("scenario_water_level_m"),
-            }]
-            map_name = f"map3d_{scenario}.html"
-
+    if dem_path and Path(dem_path).exists() and scenarios and map_mode in {"3D terrain map", "Both"}:
         if items:
+            st.subheader("3D Terrain Map")
             out_html = Path("Backend/sea_level_risk/outputs/realtime") / city / map_name
             result = render_3d_flood_map_multi(
                 dem_path=dem_path,
@@ -133,7 +174,7 @@ if run:
             st.caption("Legend: +20cm (yellow), +50cm (orange), +100cm (red).")
             html_text = Path(result["out_html"]).read_text(encoding="utf-8")
             components.html(html_text, height=760, scrolling=True)
-    else:
+    elif map_mode in {"3D terrain map", "Both"}:
         st.warning("DEM or scenarios missing for this city.")
 
     forecast = payload.get("forecast_values_m", [])

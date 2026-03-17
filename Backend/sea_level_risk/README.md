@@ -48,7 +48,7 @@ Notes:
 - `jakarta`: experimental IOC realtime + tide-aware baseline
 - `amsterdam`: delayed IOC coastal proxy + tide-aware baseline
 
-## 3D Dashboard (interactive)
+## Dashboard (interactive)
 Run the API first, then run dashboard:
 ```powershell
 Backend/.venv311/Scripts/streamlit run Backend/sea_level_risk/dashboard_app.py
@@ -57,6 +57,7 @@ Backend/.venv311/Scripts/streamlit run Backend/sea_level_risk/dashboard_app.py
 Dashboard features:
 - choose a coastal city
 - fetch provider-aware realtime data
+- render a practical 2D flood polygon map on a real basemap
 - render forecast line
 - render 3D flood map for `+20cm / +50cm / +100cm`
 - show provider, support tier, forecast mode, and delay notes
