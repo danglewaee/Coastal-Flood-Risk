@@ -63,6 +63,20 @@ Dashboard features:
 - show provider, support tier, forecast mode, and delay notes
 - switch to `Multi-city compare` to compare Honolulu / Boston / New York / Jakarta / Amsterdam in one view
 
+## Presentation-ready app
+For demo / report / advisor presentation, use the separate presentation app:
+```powershell
+Backend/.venv311/Scripts/streamlit run Backend/sea_level_risk/presentation_app.py --server.port 8602
+```
+
+Presentation app layout:
+- city spotlight
+- 2D flood map on a basemap
+- forecast trajectory
+- cross-city compare table
+- executive takeaway cards
+- methodology and limitations section
+
 ## GIS logic
 - DEM cells are treated as land only when `elevation > 0 m`.
 - Flood scenarios are built from `0 < DEM <= scenario_water_level`.
@@ -120,6 +134,7 @@ Note:
 ## Files
 - `Backend/sea_level_risk/realtime_api.py`: realtime API
 - `Backend/sea_level_risk/dashboard_app.py`: 3D dashboard
+- `Backend/sea_level_risk/presentation_app.py`: presentation-ready demo app
 - `Backend/sea_level_risk/city_registry.json`: city registry with provider/support metadata
 - `Backend/sea_level_risk/data_providers.py`: NOAA + IOC fetch layer
 - `Backend/sea_level_risk/forecast_baselines.py`: tide-aware baseline forecast
