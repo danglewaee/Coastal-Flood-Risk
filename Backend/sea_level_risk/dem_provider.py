@@ -32,8 +32,7 @@ def copernicus_tile_name(lat: float, lon: float) -> str:
     return f"Copernicus_DSM_COG_10_{lat_tag}_{lon_tag}_DEM"
 
 
-def ensure_dem_for_station(station: str, cache_dir: str = "data/dem_cache") -> str:
-    lat, lon = get_station_lat_lon_noaa(station)
+def ensure_dem_for_lat_lon(lat: float, lon: float, cache_dir: str = "data/dem_cache") -> str:
     tile = copernicus_tile_name(lat, lon)
 
     out_dir = Path(cache_dir)
@@ -47,3 +46,8 @@ def ensure_dem_for_station(station: str, cache_dir: str = "data/dem_cache") -> s
     resp.raise_for_status()
     out_path.write_bytes(resp.content)
     return str(out_path)
+
+
+def ensure_dem_for_station(station: str, cache_dir: str = "data/dem_cache") -> str:
+    lat, lon = get_station_lat_lon_noaa(station)
+    return ensure_dem_for_lat_lon(lat, lon, cache_dir=cache_dir)

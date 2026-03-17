@@ -2,10 +2,8 @@
 from pathlib import Path
 
 import pandas as pd
-import requests
 
-
-NOAA_ENDPOINT = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+from .data_providers import fetch_noaa_series
 
 
 def _parse_ymd(date_str: str) -> pd.Timestamp:
@@ -24,48 +22,16 @@ def _fetch_noaa_chunk(
     units: str,
     time_zone: str,
 ) -> pd.DataFrame:
-    params = {
-        "product": product,
-        "application": "sea_level_risk_pipeline",
-        "begin_date": begin_date,
-        "end_date": end_date,
-        "datum": datum,
-        "station": station,
-        "time_zone": time_zone,
-        "units": units,
-        "format": "json",
-    }
-
-    response = requests.get(NOAA_ENDPOINT, params=params, timeout=60)
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        detail = ""
-        try:
-            payload = response.json()
-            if isinstance(payload, dict) and "error" in payload:
-                detail = f" NOAA error: {payload['error']}"
-        except ValueError:
-            pass
-        raise requests.HTTPError(f"{exc}{detail}") from exc
-
-    payload = response.json()
-
-    # NOAA can return {"error": ...} with HTTP 200 in some cases.
-    if isinstance(payload, dict) and "error" in payload:
-        raise RuntimeError(f"NOAA error: {payload['error']}")
-
-    if "data" not in payload:
-        raise RuntimeError(f"NOAA response missing data: {payload}")
-
-    df = pd.DataFrame(payload["data"])
-    if df.empty:
-        return pd.DataFrame(columns=["timestamp", "sea_level"])
-
-    df = df.rename(columns={"t": "timestamp", "v": "sea_level"})
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
-    df["sea_level"] = pd.to_numeric(df["sea_level"], errors="coerce")
-    return df[["timestamp", "sea_level"]].dropna().sort_values("timestamp")
+    return fetch_noaa_series(
+        station=station,
+        begin_date=begin_date,
+        end_date=end_date,
+        product=product,
+        datum=datum,
+        units=units,
+        time_zone=time_zone,
+        interval="h",
+    )
 
 
 def download_noaa_hourly(
@@ -73,7 +39,7 @@ def download_noaa_hourly(
     begin_date: str,
     end_date: str,
     out_csv: str,
-    product: str = "hourly_height",
+    product: str = "water_level",
     datum: str = "MSL",
     units: str = "metric",
     time_zone: str = "gmt",
@@ -154,7 +120,7 @@ def main():
     noaa_parser.add_argument("--end", required=True, help="YYYYMMDD")
     noaa_parser.add_argument("--out", required=True)
     noaa_parser.add_argument("--datum", default="MSL")
-    noaa_parser.add_argument("--product", default="hourly_height")
+    noaa_parser.add_argument("--product", default="water_level")
 
     uhslc_parser = subparsers.add_parser("uhslc")
     uhslc_parser.add_argument("--input", required=True)

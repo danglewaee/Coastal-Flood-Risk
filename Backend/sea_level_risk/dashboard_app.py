@@ -27,16 +27,17 @@ def risk_badge(level: str) -> str:
     return f"<span style='background:{color};color:white;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700'>{txt}</span>"
 
 
-st.set_page_config(page_title="Sea Level Realtime 3D", layout="wide")
-st.title("Realtime Sea-Level Forecast Dashboard (3D GIS)")
+st.set_page_config(page_title="Coastal Water-Level Realtime 3D", layout="wide")
+st.title("Realtime Coastal Water-Level and Flood Risk Dashboard (3D GIS)")
 
 registry = load_city_registry()
-city_keys = list(registry.keys())
+city_keys = sorted(registry.keys(), key=lambda k: registry[k].get("display_name", k))
 
 with st.sidebar:
     st.header("Controls")
     api_base = st.text_input("Realtime API URL", "http://127.0.0.1:8000")
-    city = st.selectbox("City", city_keys, index=0)
+    default_index = city_keys.index("honolulu") if "honolulu" in city_keys else 0
+    city = st.selectbox("City", city_keys, index=default_index, format_func=lambda key: registry[key].get("display_name", key))
     horizon = st.slider("Forecast horizon (hours)", 1, 24, 6)
     hours_back = st.slider("History window (hours)", 48, 240, 96, step=24)
     scenario = st.selectbox("3D Scenario", ["plus_20cm", "plus_50cm", "plus_100cm"], index=1)
@@ -72,11 +73,27 @@ if run:
     model_meta = payload.get("model", {})
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("City", payload.get("city", "n/a"))
+    c1.metric("City", payload.get("display_name") or payload.get("city", "n/a"))
     c2.metric("Station", payload.get("station", "n/a"))
     c3.metric("Peak Prediction (m)", f"{payload.get('peak_prediction_m', float('nan')):.4f}")
     c4.metric("Last Obs (UTC)", history.get("last_observation_utc", "n/a"))
-    st.caption(f"Model: {model_meta.get('type', 'n/a')} | Lookback: {model_meta.get('lookback_hours', 'n/a')}h | Obs used: {history.get('observations_used', 'n/a')}")
+    source_meta = payload.get("source", {})
+    st.caption(
+        f"Provider: {payload.get('provider_label', 'n/a')} | "
+        f"Support: {payload.get('support_tier', 'n/a')} | "
+        f"Forecast: {model_meta.get('forecast_mode_used', 'n/a')} | "
+        f"Obs used: {history.get('observations_used', 'n/a')}"
+    )
+    if payload.get("city_notes"):
+        st.info(payload["city_notes"])
+    if source_meta.get("note"):
+        st.warning(source_meta["note"])
+    if source_meta.get("observation_delay_hours") is not None:
+        st.caption(
+            f"Source column: {source_meta.get('source_value_column', 'n/a')} | "
+            f"Observation delay: {float(source_meta['observation_delay_hours']):.1f} h | "
+            f"Source status: {source_meta.get('status', 'n/a')}"
+        )
 
     scenarios = payload.get("scenarios", [])
     scenario_map = {s["scenario"]: s for s in scenarios}
