@@ -115,6 +115,24 @@ Notes:
 - The output is written to `Backend/sea_level_risk/outputs/realtime/boston/flood_plus_50cm.geojson`
 - When a scenario GeoJSON has `processing_mode = "hydro_model"`, the realtime API will prefer it over DEM-threshold output.
 
+Detailed HEC-RAS steps:
+- `Backend/sea_level_risk/docs/HEC_RAS_BOSTON.md`
+
+Quick alignment check:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.check_alignment ^
+  --dem data/dem_cache/Copernicus_DSM_COG_10_N42_00_W072_00_DEM.tif ^
+  --depth data/hydro/boston/plus_50cm_depth.tif
+```
+
+Batch postprocess (all 3 scenarios if present):
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.hydro_batch ^
+  --city boston ^
+  --depth-dir data/hydro/boston ^
+  --dem data/dem_cache/Copernicus_DSM_COG_10_N42_00_W072_00_DEM.tif
+```
+
 ## Rebuild GIS outputs after code update
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.run_pipeline \
