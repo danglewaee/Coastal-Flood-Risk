@@ -94,6 +94,27 @@ Presentation app layout:
 - Small polygons are filtered, then geometries are cleaned before exporting GeoJSON/GPKG.
 - For steep locations like Honolulu, `+50 cm` and even `+1 m` can still appear as narrow coastal strips. That is expected for a simple DEM-threshold workflow.
 
+## Hydrodynamic integration (Boston PoC)
+If you run a 2D hydrodynamic model (e.g., HEC-RAS 2D) and export a depth grid GeoTIFF,
+you can replace the DEM-threshold flood polygons with model-based polygons.
+
+Workflow:
+1. Run the hydrodynamic model for the scenario (e.g., `plus_50cm`).
+2. Export depth grid to GeoTIFF from the model (RAS Mapper export).
+3. Postprocess depth raster into flood polygons:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.hydro_postprocess ^
+  --city boston ^
+  --scenario plus_50cm ^
+  --depth data/hydro/boston/plus_50cm_depth.tif ^
+  --dem data/dem_cache/Copernicus_DSM_COG_10_N42_00_W072_00_DEM.tif
+```
+
+Notes:
+- Depth raster and DEM must be aligned (same grid/CRS). Otherwise flood ratio will be omitted.
+- The output is written to `Backend/sea_level_risk/outputs/realtime/boston/flood_plus_50cm.geojson`
+- When a scenario GeoJSON has `processing_mode = "hydro_model"`, the realtime API will prefer it over DEM-threshold output.
+
 ## Rebuild GIS outputs after code update
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.run_pipeline \

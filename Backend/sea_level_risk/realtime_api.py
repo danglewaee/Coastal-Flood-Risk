@@ -18,6 +18,7 @@ from .dem_provider import cached_dem_for_lat_lon, ensure_dem_for_lat_lon, ensure
 from .forecast import recursive_forecast_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_from_frame
 from .gis import dem_to_flood_polygon
+from .hydro import load_hydro_override
 from .priority import build_hotspots_from_scenarios
 
 
@@ -216,6 +217,7 @@ class RealtimeService:
         auto_dem: bool = True,
         provider: str | None = None,
         scenario_names: list[str] | None = None,
+        use_hydro: bool = True,
     ) -> dict:
         city_key, cfg = self._resolve_city_config(city=city, provider=provider, station=station)
         df, fetch_meta = self.fetch_latest_series(
@@ -287,6 +289,25 @@ class RealtimeService:
                 delta = SCENARIO_NAME_TO_DELTA_M[name]
                 level = peak + delta
                 geojson = out_dir / f"flood_{name}.geojson"
+                if use_hydro:
+                    hydro = load_hydro_override(out_dir, name)
+                    if hydro:
+                        flood_ratio = float(hydro.get("flood_ratio", 0.0))
+                        scenarios.append(
+                            {
+                                "scenario": name,
+                                "scenario_water_level_m": hydro.get("scenario_water_level_m", level),
+                                "flood_area_m2": float(hydro.get("flood_area_m2", 0.0)),
+                                "flood_ratio": flood_ratio,
+                                "component_count": int(hydro.get("component_count", 0)),
+                                "candidate_flood_pixels": int(hydro.get("flood_pixels", 0)),
+                                "land_pixels": int(hydro.get("land_pixels", 0)),
+                                "processing_mode": hydro.get("processing_mode", "hydro_model"),
+                                "risk_level": hydro.get("risk_level") or _risk_label(flood_ratio),
+                                "geojson": hydro["geojson"],
+                            }
+                        )
+                        continue
                 cached = self._scenario_cache_record(
                     geojson_path=geojson,
                     scenario_water_level_m=level,
@@ -435,6 +456,7 @@ def create_app(model_path: str, metadata_path: str, dem_path: str | None = None)
         dem = request.args.get("dem")
         auto_dem = request.args.get("auto_dem", "1") not in {"0", "false", "False"}
         scenarios_raw = request.args.get("scenarios")
+        use_hydro = request.args.get("use_hydro", "1") not in {"0", "false", "False"}
         scenario_names = None
         if scenarios_raw:
             scenario_names = [item.strip() for item in scenarios_raw.split(",") if item.strip()]
@@ -450,6 +472,7 @@ def create_app(model_path: str, metadata_path: str, dem_path: str | None = None)
                 dem_path=dem,
                 auto_dem=auto_dem,
                 scenario_names=scenario_names,
+                use_hydro=use_hydro,
             )
             return jsonify(result)
         except Exception as exc:

@@ -208,6 +208,75 @@ def dem_to_flood_polygon(
     }
 
 
+def depth_raster_to_flood_polygon(
+    depth_path: str,
+    out_geojson: str,
+    dem_path: Optional[str] = None,
+    depth_threshold_m: float = 0.01,
+    min_land_elevation_m: float = DEFAULT_MIN_LAND_ELEVATION_M,
+    min_component_area_m2: float = DEFAULT_MIN_COMPONENT_AREA_M2,
+    smooth_tolerance_m: float = DEFAULT_SMOOTH_TOLERANCE_M,
+) -> dict:
+    out_path = Path(out_geojson)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    land_pixel_count = None
+    flood_pixel_count = 0
+    flood_ratio = 0.0
+
+    with rasterio.open(depth_path) as src:
+        depth = src.read(1, masked=True)
+        nodata_mask = np.ma.getmaskarray(depth)
+        depth_data = np.asarray(depth.filled(np.nan), dtype=np.float32)
+
+        valid_mask = np.asarray(~nodata_mask, dtype=bool)
+        flood_mask = valid_mask & np.isfinite(depth_data) & (depth_data > float(depth_threshold_m))
+
+        flood_pixel_count = int(np.count_nonzero(flood_mask))
+        flood_geoms = _mask_to_geometries(flood_mask, src.transform)
+        flood_gdf = _clean_flood_geometries(
+            geoms=flood_geoms,
+            predicted_level_m=float(depth_threshold_m),
+            crs=src.crs,
+            min_component_area_m2=min_component_area_m2,
+            smooth_tolerance_m=smooth_tolerance_m,
+        )
+
+        if dem_path and Path(dem_path).exists():
+            with rasterio.open(dem_path) as dem_src:
+                if (
+                    dem_src.width == src.width
+                    and dem_src.height == src.height
+                    and dem_src.transform == src.transform
+                    and dem_src.crs == src.crs
+                ):
+                    dem = dem_src.read(1, masked=True)
+                    dem_data = np.asarray(dem.filled(np.nan), dtype=np.float32)
+                    dem_valid = np.asarray(~np.ma.getmaskarray(dem), dtype=bool)
+                    land_mask = dem_valid & np.isfinite(dem_data) & (dem_data > float(min_land_elevation_m))
+                    land_pixel_count = int(np.count_nonzero(land_mask))
+                    flood_land_pixels = int(np.count_nonzero(flood_mask & land_mask))
+                    if land_pixel_count > 0:
+                        flood_ratio = float(flood_land_pixels / land_pixel_count)
+
+        flood_gdf.to_file(out_path, driver="GeoJSON")
+        flood_area_m2 = _compute_flood_area_m2(flood_gdf)
+
+    return {
+        "processing_mode": "hydro_depth_threshold",
+        "depth_threshold_m": float(depth_threshold_m),
+        "min_land_elevation_m": float(min_land_elevation_m),
+        "min_component_area_m2": float(min_component_area_m2),
+        "smooth_tolerance_m": float(smooth_tolerance_m),
+        "land_pixels": int(land_pixel_count) if land_pixel_count is not None else None,
+        "flood_pixels": int(flood_pixel_count),
+        "flood_ratio": float(flood_ratio),
+        "component_count": int(len(flood_gdf)) if flood_gdf is not None else 0,
+        "flood_area_m2": float(flood_area_m2),
+        "out_geojson": str(out_path),
+    }
+
+
 def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "layer") -> dict:
     flood = gpd.read_file(flood_geojson)
     layer = gpd.read_file(layer_path)
