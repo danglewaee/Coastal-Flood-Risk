@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 import pandas as pd
 import pydeck as pdk
@@ -6,11 +7,17 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 try:
+    from .asset_readiness import split_city_keys_by_map_status
     from .city_registry import load_city_registry
     from .render_2d import SCENARIO_2D_STYLE, build_2d_layers
     from .render_3d import render_3d_flood_map_multi
 except ImportError:
+    from Backend.sea_level_risk.asset_readiness import split_city_keys_by_map_status
     from Backend.sea_level_risk.city_registry import load_city_registry
     from Backend.sea_level_risk.render_2d import SCENARIO_2D_STYLE, build_2d_layers
     from Backend.sea_level_risk.render_3d import render_3d_flood_map_multi
@@ -249,14 +256,27 @@ def render_compare(payloads: list[dict], selected_scenario: str):
                 st.caption(payload["source"]["note"])
 
 
-st.set_page_config(page_title="Coastal Water-Level Realtime 3D", layout="wide")
-st.title("Realtime Coastal Water-Level and Flood Risk Dashboard (3D GIS)")
+st.set_page_config(page_title="Coastal Flood Risk", layout="wide")
+st.title("Coastal Flood Risk Dashboard")
 
 registry = load_city_registry()
-city_keys = sorted(registry.keys(), key=lambda k: registry[k].get("display_name", k))
+all_city_keys = sorted(registry.keys(), key=lambda k: registry[k].get("display_name", k))
+full_map_ready_cities, partial_map_cities, forecast_only_cities = split_city_keys_by_map_status(
+    all_city_keys,
+    outputs_root=REPO_ROOT / "Backend" / "sea_level_risk" / "outputs" / "realtime",
+)
+city_keys = full_map_ready_cities or all_city_keys
+
+def _city_labels(keys: list[str]) -> str:
+    return ", ".join(registry[key].get("display_name", key) for key in keys)
 
 with st.sidebar:
     st.header("Controls")
+    st.caption("Demo-safe mode: only cities with full local flood-map assets are shown.")
+    if partial_map_cities:
+        st.caption(f"Hidden partial-map cities: {_city_labels(partial_map_cities)}")
+    if forecast_only_cities:
+        st.caption(f"Hidden forecast-only cities: {_city_labels(forecast_only_cities)}")
     api_base = st.text_input("Realtime API URL", "http://127.0.0.1:8000")
     dashboard_mode = st.selectbox("Dashboard mode", ["Single city", "Multi-city compare"], index=0)
     default_index = city_keys.index("honolulu") if "honolulu" in city_keys else 0

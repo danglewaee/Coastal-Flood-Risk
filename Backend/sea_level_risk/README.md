@@ -1,4 +1,4 @@
-# Realtime Coastal Water-Level and Flood Risk Pipeline
+# Coastal Flood Risk
 
 ## Setup (Python 3.11)
 ```powershell
@@ -67,6 +67,16 @@ Dashboard features:
 For demo / report / advisor presentation, use the separate presentation app:
 ```powershell
 Backend/.venv311/Scripts/streamlit run Backend/sea_level_risk/presentation_app.py --server.port 8602
+```
+
+One-click launcher:
+```powershell
+powershell -ExecutionPolicy Bypass -File Backend/sea_level_risk/start_presentation_stack.ps1
+```
+
+Stop both services:
+```powershell
+powershell -ExecutionPolicy Bypass -File Backend/sea_level_risk/stop_presentation_stack.ps1
 ```
 
 Presentation app layout:

@@ -48,6 +48,12 @@ def ensure_dem_for_lat_lon(lat: float, lon: float, cache_dir: str = "data/dem_ca
     return str(out_path)
 
 
+def cached_dem_for_lat_lon(lat: float, lon: float, cache_dir: str = "data/dem_cache") -> str | None:
+    tile = copernicus_tile_name(lat, lon)
+    out_path = Path(cache_dir) / f"{tile}.tif"
+    return str(out_path) if out_path.exists() else None
+
+
 def ensure_dem_for_station(station: str, cache_dir: str = "data/dem_cache") -> str:
     lat, lon = get_station_lat_lon_noaa(station)
     return ensure_dem_for_lat_lon(lat, lon, cache_dir=cache_dir)

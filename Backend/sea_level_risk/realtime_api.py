@@ -14,7 +14,7 @@ from tensorflow.keras.models import load_model
 
 from .city_registry import load_city_registry
 from .data_providers import ensure_hours_back_coverage, fetch_ioc_recent, fetch_noaa_recent
-from .dem_provider import ensure_dem_for_lat_lon, ensure_dem_for_station
+from .dem_provider import cached_dem_for_lat_lon, ensure_dem_for_lat_lon, ensure_dem_for_station
 from .forecast import recursive_forecast_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_from_frame
 from .gis import dem_to_flood_polygon
@@ -22,6 +22,12 @@ from .priority import build_hotspots_from_scenarios
 
 
 DEFAULT_SCENARIOS_M = [0.2, 0.5, 1.0]
+SCENARIO_REUSE_LEVEL_TOLERANCE_M = 0.10
+SCENARIO_NAME_TO_DELTA_M = {
+    "plus_20cm": 0.2,
+    "plus_50cm": 0.5,
+    "plus_100cm": 1.0,
+}
 
 
 def _risk_label(flood_ratio: float) -> str:
@@ -89,6 +95,13 @@ class RealtimeService:
         if resolved_dem and Path(resolved_dem).exists():
             return resolved_dem
 
+        lat = cfg.get("lat")
+        lon = cfg.get("lon")
+        if lat is not None and lon is not None:
+            cached = cached_dem_for_lat_lon(float(lat), float(lon))
+            if cached:
+                return cached
+
         if not auto_dem:
             return resolved_dem if resolved_dem and Path(resolved_dem).exists() else None
 
@@ -96,12 +109,38 @@ class RealtimeService:
         if provider == "noaa" and cfg.get("station_id"):
             return ensure_dem_for_station(cfg["station_id"])
 
-        lat = cfg.get("lat")
-        lon = cfg.get("lon")
         if lat is not None and lon is not None:
             return ensure_dem_for_lat_lon(float(lat), float(lon))
 
         return None
+
+    def _scenario_cache_record(
+        self,
+        geojson_path: Path,
+        scenario_water_level_m: float,
+        dem_path: str,
+    ) -> dict | None:
+        meta_path = geojson_path.with_suffix(".meta.json")
+        if not geojson_path.exists() or not meta_path.exists():
+            return None
+
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            return None
+
+        if meta.get("dem_path") != dem_path:
+            return None
+
+        cached_level = meta.get("scenario_water_level_m")
+        if cached_level is None:
+            return None
+
+        if abs(float(cached_level) - float(scenario_water_level_m)) > SCENARIO_REUSE_LEVEL_TOLERANCE_M:
+            return None
+
+        meta["geojson"] = str(geojson_path)
+        return meta
 
     def fetch_latest_series(
         self,
@@ -176,6 +215,7 @@ class RealtimeService:
         dem_path: str | None = None,
         auto_dem: bool = True,
         provider: str | None = None,
+        scenario_names: list[str] | None = None,
     ) -> dict:
         city_key, cfg = self._resolve_city_config(city=city, provider=provider, station=station)
         df, fetch_meta = self.fetch_latest_series(
@@ -240,11 +280,49 @@ class RealtimeService:
             city_part = city_key if city_key else _slugify_station_ref(cfg.get("provider", "unknown"), fetch_meta["station_ref"])
             out_dir = Path(f"Backend/sea_level_risk/outputs/realtime/{city_part}")
             out_dir.mkdir(parents=True, exist_ok=True)
-            for delta in DEFAULT_SCENARIOS_M:
+            scenario_sequence = scenario_names or list(SCENARIO_NAME_TO_DELTA_M.keys())
+            for name in scenario_sequence:
+                if name not in SCENARIO_NAME_TO_DELTA_M:
+                    raise ValueError(f"Unsupported scenario '{name}'. Available: {list(SCENARIO_NAME_TO_DELTA_M.keys())}")
+                delta = SCENARIO_NAME_TO_DELTA_M[name]
                 level = peak + delta
-                name = f"plus_{int(delta * 100)}cm"
                 geojson = out_dir / f"flood_{name}.geojson"
-                flood = dem_to_flood_polygon(dem_path_resolved, level, str(geojson))
+                cached = self._scenario_cache_record(
+                    geojson_path=geojson,
+                    scenario_water_level_m=level,
+                    dem_path=dem_path_resolved,
+                )
+                if cached is not None:
+                    flood = {
+                        "predicted_level_m": float(cached.get("predicted_level_m", level)),
+                        "processing_mode": cached.get("processing_mode", "cached_geojson"),
+                        "candidate_flood_pixels": int(cached.get("candidate_flood_pixels", 0)),
+                        "land_pixels": int(cached.get("land_pixels", 0)),
+                        "component_count": int(cached.get("component_count", 0)),
+                        "flood_ratio": float(cached.get("flood_ratio", 0.0)),
+                        "flood_area_m2": float(cached.get("flood_area_m2", 0.0)),
+                        "out_geojson": str(geojson),
+                    }
+                else:
+                    flood = dem_to_flood_polygon(dem_path_resolved, level, str(geojson))
+                    geojson.with_suffix(".meta.json").write_text(
+                        json.dumps(
+                            {
+                                "scenario": name,
+                                "scenario_water_level_m": float(level),
+                                "predicted_level_m": float(flood.get("predicted_level_m", level)),
+                                "processing_mode": flood.get("processing_mode", "coastal_connected_threshold"),
+                                "candidate_flood_pixels": int(flood.get("candidate_flood_pixels", 0)),
+                                "land_pixels": int(flood.get("land_pixels", 0)),
+                                "component_count": int(flood.get("component_count", 0)),
+                                "flood_ratio": float(flood.get("flood_ratio", 0.0)),
+                                "flood_area_m2": float(flood.get("flood_area_m2", 0.0)),
+                                "dem_path": dem_path_resolved,
+                            },
+                            indent=2,
+                        ),
+                        encoding="utf-8",
+                    )
                 scenarios.append(
                     {
                         "scenario": name,
@@ -291,6 +369,7 @@ class RealtimeService:
                 dem_path=None,
                 auto_dem=True,
                 provider=cfg.get("provider"),
+                scenario_names=list(SCENARIO_NAME_TO_DELTA_M.keys()),
             )
             scenarios = pred.get("scenarios", [])
             if scenarios:
@@ -355,6 +434,10 @@ def create_app(model_path: str, metadata_path: str, dem_path: str | None = None)
         datum = request.args.get("datum", "MSL")
         dem = request.args.get("dem")
         auto_dem = request.args.get("auto_dem", "1") not in {"0", "false", "False"}
+        scenarios_raw = request.args.get("scenarios")
+        scenario_names = None
+        if scenarios_raw:
+            scenario_names = [item.strip() for item in scenarios_raw.split(",") if item.strip()]
 
         try:
             result = service.predict(
@@ -366,6 +449,7 @@ def create_app(model_path: str, metadata_path: str, dem_path: str | None = None)
                 datum=datum,
                 dem_path=dem,
                 auto_dem=auto_dem,
+                scenario_names=scenario_names,
             )
             return jsonify(result)
         except Exception as exc:

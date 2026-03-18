@@ -1,19 +1,33 @@
 from pathlib import Path
+import sys
 
 import pandas as pd
 import pydeck as pdk
 import requests
 import streamlit as st
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 try:
+    from .asset_readiness import split_city_keys_by_map_status
     from .city_registry import load_city_registry
     from .render_2d import SCENARIO_2D_STYLE, build_2d_layers
 except ImportError:
+    from Backend.sea_level_risk.asset_readiness import split_city_keys_by_map_status
     from Backend.sea_level_risk.city_registry import load_city_registry
     from Backend.sea_level_risk.render_2d import SCENARIO_2D_STYLE, build_2d_layers
 
 
-def fetch_payload(api_base: str, city: str, horizon: int, hours_back: int, auto_dem: bool = True) -> dict:
+def fetch_payload(
+    api_base: str,
+    city: str,
+    horizon: int,
+    hours_back: int,
+    auto_dem: bool = True,
+    scenario_names: list[str] | None = None,
+) -> dict:
     url = f"{api_base.rstrip('/')}/realtime/forecast"
     params = {
         "city": city,
@@ -22,12 +36,73 @@ def fetch_payload(api_base: str, city: str, horizon: int, hours_back: int, auto_
         "datum": "MSL",
         "auto_dem": 1 if auto_dem else 0,
     }
+    if scenario_names:
+        params["scenarios"] = ",".join(scenario_names)
     resp = requests.get(url, params=params, timeout=180)
     resp.raise_for_status()
     payload = resp.json()
     if "error" in payload:
         raise RuntimeError(payload["error"])
     return payload
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def fetch_payload_cached(
+    api_base: str,
+    city: str,
+    horizon: int,
+    hours_back: int,
+    auto_dem: bool = True,
+    scenario_names: tuple[str, ...] | None = None,
+) -> dict:
+    return fetch_payload(
+        api_base=api_base,
+        city=city,
+        horizon=horizon,
+        hours_back=hours_back,
+        auto_dem=auto_dem,
+        scenario_names=list(scenario_names) if scenario_names else None,
+    )
+
+
+def load_presentation_data(
+    api_base: str,
+    spotlight_city: str,
+    compare_selection: list[str],
+    horizon: int,
+    hours_back: int,
+    auto_dem: bool,
+    selected_scenario: str,
+    show_all: bool,
+) -> tuple[dict, list[dict], list[str]]:
+    spotlight_scenarios = tuple(SCENARIO_2D_STYLE.keys()) if show_all else (selected_scenario,)
+    spotlight = fetch_payload_cached(
+        api_base=api_base,
+        city=spotlight_city,
+        horizon=horizon,
+        hours_back=hours_back,
+        auto_dem=auto_dem,
+        scenario_names=spotlight_scenarios,
+    )
+
+    compare_payloads: list[dict] = []
+    warnings: list[str] = []
+    for city in compare_selection:
+        try:
+            compare_payloads.append(
+                fetch_payload_cached(
+                    api_base=api_base,
+                    city=city,
+                    horizon=horizon,
+                    hours_back=hours_back,
+                    auto_dem=auto_dem,
+                    scenario_names=(selected_scenario,),
+                )
+            )
+        except Exception as exc:
+            warnings.append(f"{registry.get(city, {}).get('display_name', city)}: {exc}")
+
+    return spotlight, compare_payloads, warnings
 
 
 def scenario_items_from_payload(payload: dict, selected_scenario: str, show_all: bool) -> list[dict]:
@@ -90,7 +165,7 @@ def scenario_summary_row(payload: dict, selected_scenario: str) -> dict:
     }
 
 
-st.set_page_config(page_title="Sea-Level Risk Presentation", layout="wide")
+st.set_page_config(page_title="Coastal Flood Risk", layout="wide")
 
 st.markdown(
     """
@@ -109,7 +184,7 @@ st.markdown(
         color: #9db0c7;
     }
     .hero {
-        padding: 28px 30px;
+        padding: 28px 30px 22px 30px;
         border-radius: 24px;
         background: linear-gradient(135deg, rgba(13,71,161,0.55), rgba(17,84,77,0.42));
         border: 1px solid rgba(255,255,255,0.08);
@@ -142,110 +217,211 @@ st.markdown(
 st.markdown(
     """
     <div class="hero">
-      <h1>Realtime Coastal Water-Level And Flood Risk</h1>
-      <p>
-        Presentation mode for a multi-city prototype: official NOAA gauges where possible,
-        experimental IOC feeds where necessary, short-horizon forecasts, and DEM-based coastal flood scenarios.
-      </p>
+      <h1>Coastal Flood Risk</h1>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
 registry = load_city_registry()
-city_keys = sorted(registry.keys(), key=lambda k: registry[k].get("display_name", k))
+all_city_keys = sorted(registry.keys(), key=lambda k: registry[k].get("display_name", k))
+full_map_ready_cities, partial_map_cities, forecast_only_cities = split_city_keys_by_map_status(
+    all_city_keys,
+    outputs_root=REPO_ROOT / "Backend" / "sea_level_risk" / "outputs" / "realtime",
+)
+city_keys = full_map_ready_cities or all_city_keys
+compare_default = [c for c in ["boston", "newyork", "jakarta", "amsterdam"] if c in city_keys]
+
+def _city_labels(keys: list[str]) -> str:
+    return ", ".join(registry[key].get("display_name", key) for key in keys)
+
+default_view = {
+    "api_base": "http://127.0.0.1:8100",
+    "spotlight_city": "boston" if "boston" in city_keys else city_keys[0],
+    "compare_cities": compare_default,
+    "scenario": "plus_50cm",
+    "show_all": False,
+    "horizon": 6,
+    "hours_back": 96,
+    "auto_dem": False,
+}
+
+if "presentation_loaded" not in st.session_state:
+    st.session_state.presentation_loaded = False
+if "presentation_view" not in st.session_state:
+    st.session_state.presentation_view = default_view.copy()
+if "presentation_spotlight" not in st.session_state:
+    st.session_state.presentation_spotlight = None
+if "presentation_compare_payloads" not in st.session_state:
+    st.session_state.presentation_compare_payloads = []
+if "presentation_fetch_warnings" not in st.session_state:
+    st.session_state.presentation_fetch_warnings = []
 
 with st.sidebar:
     st.header("Presentation Controls")
-    api_base = st.text_input("Realtime API URL", "http://127.0.0.1:8100")
-    spotlight_city = st.selectbox("Spotlight city", city_keys, index=city_keys.index("boston") if "boston" in city_keys else 0, format_func=lambda key: registry[key].get("display_name", key))
-    compare_default = [c for c in ["boston", "newyork", "jakarta", "amsterdam"] if c in city_keys]
-    compare_cities = st.multiselect("Compare cities", city_keys, default=compare_default, format_func=lambda key: registry[key].get("display_name", key))
-    scenario = st.selectbox("Scenario", ["plus_20cm", "plus_50cm", "plus_100cm"], index=1)
-    show_all = st.checkbox("Overlay all scenarios on spotlight map", value=False)
-    horizon = st.slider("Forecast horizon (hours)", 1, 24, 6)
-    hours_back = st.slider("History window (hours)", 48, 240, 96, step=24)
-    run = st.button("Build Presentation View")
+    st.caption("Demo-safe mode: only cities with full local flood-map assets are shown.")
+    if partial_map_cities:
+        st.caption(f"Hidden partial-map cities: {_city_labels(partial_map_cities)}")
+    if forecast_only_cities:
+        st.caption(f"Hidden forecast-only cities: {_city_labels(forecast_only_cities)}")
+    with st.form("presentation_controls"):
+        current_spotlight = st.session_state.presentation_view["spotlight_city"]
+        if current_spotlight not in city_keys:
+            current_spotlight = city_keys[0]
+        current_compare = [key for key in st.session_state.presentation_view["compare_cities"] if key in city_keys]
+        if not current_compare:
+            current_compare = compare_default or city_keys[: min(4, len(city_keys))]
+        api_base = st.text_input("Realtime API URL", st.session_state.presentation_view["api_base"])
+        spotlight_city = st.selectbox(
+            "Spotlight city",
+            city_keys,
+            index=city_keys.index(current_spotlight),
+            format_func=lambda key: registry[key].get("display_name", key),
+        )
+        compare_cities = st.multiselect(
+            "Compare cities",
+            city_keys,
+            default=current_compare,
+            format_func=lambda key: registry[key].get("display_name", key),
+        )
+        scenario = st.selectbox(
+            "Scenario",
+            ["plus_20cm", "plus_50cm", "plus_100cm"],
+            index=["plus_20cm", "plus_50cm", "plus_100cm"].index(st.session_state.presentation_view["scenario"]),
+        )
+        show_all = st.checkbox("Overlay all scenarios on spotlight map", value=st.session_state.presentation_view["show_all"])
+        auto_dem = st.checkbox(
+            "Allow auto-download DEM for missing cities",
+            value=st.session_state.presentation_view["auto_dem"],
+            help="Leave this off for stable switching. Turn it on only when preparing a city for the first time.",
+        )
+        horizon = st.slider("Forecast horizon (hours)", 1, 24, st.session_state.presentation_view["horizon"])
+        hours_back = st.slider("History window (hours)", 48, 240, st.session_state.presentation_view["hours_back"], step=24)
+        refresh = st.form_submit_button("Refresh Presentation View")
 
-if run:
+requested_view = {
+    "api_base": api_base,
+    "spotlight_city": spotlight_city,
+    "compare_cities": compare_cities or compare_default or city_keys[: min(4, len(city_keys))],
+    "scenario": scenario,
+    "show_all": show_all,
+    "horizon": horizon,
+    "hours_back": hours_back,
+    "auto_dem": auto_dem,
+}
+
+if refresh:
+    fetch_payload_cached.clear()
+
+if refresh or not st.session_state.presentation_loaded:
     try:
-        spotlight = fetch_payload(api_base=api_base, city=spotlight_city, horizon=horizon, hours_back=hours_back, auto_dem=True)
-        compare_selection = compare_cities or compare_default or city_keys[: min(4, len(city_keys))]
-        compare_payloads = [fetch_payload(api_base=api_base, city=city, horizon=horizon, hours_back=hours_back, auto_dem=True) for city in compare_selection]
+        with st.spinner("Building presentation view..."):
+            spotlight, compare_payloads, fetch_warnings = load_presentation_data(
+                api_base=requested_view["api_base"],
+                spotlight_city=requested_view["spotlight_city"],
+                compare_selection=requested_view["compare_cities"],
+                horizon=requested_view["horizon"],
+                hours_back=requested_view["hours_back"],
+                auto_dem=requested_view["auto_dem"],
+                selected_scenario=requested_view["scenario"],
+                show_all=requested_view["show_all"],
+            )
+        st.session_state.presentation_spotlight = spotlight
+        st.session_state.presentation_compare_payloads = compare_payloads
+        st.session_state.presentation_fetch_warnings = fetch_warnings
+        st.session_state.presentation_view = requested_view
+        st.session_state.presentation_loaded = True
     except Exception as exc:
         st.error(f"Presentation data fetch failed: {exc}")
-        st.stop()
+        if not st.session_state.presentation_loaded:
+            st.stop()
 
-    spotlight_scenario = next((s for s in spotlight.get("scenarios", []) if s["scenario"] == scenario), None)
+loaded_view = st.session_state.presentation_view
+spotlight = st.session_state.presentation_spotlight
+compare_payloads = st.session_state.presentation_compare_payloads
+fetch_warnings = st.session_state.presentation_fetch_warnings
 
-    top_left, top_right = st.columns([1.25, 1.0], gap="large")
+if requested_view != loaded_view:
+    st.info("Controls changed but current view is still showing the last loaded data. Click `Refresh Presentation View` to apply the new city/settings.")
 
-    with top_left:
-        st.markdown("### City Spotlight")
-        st.markdown(
-            f"{badge(spotlight.get('provider_label', 'n/a'), 'info')} "
-            f"{badge(spotlight.get('support_tier', 'n/a'), support_tone(spotlight.get('support_tier', 'n/a')))} "
-            f"{badge(spotlight.get('model', {}).get('forecast_mode_used', 'n/a'), 'neutral')}",
-            unsafe_allow_html=True,
+for warning in fetch_warnings:
+    st.warning(f"Compare city skipped: {warning}")
+
+if not spotlight:
+    st.error("No presentation data is currently loaded.")
+    st.stop()
+
+spotlight_scenario = next((s for s in spotlight.get("scenarios", []) if s["scenario"] == loaded_view["scenario"]), None)
+
+top_left, top_right = st.columns([1.25, 1.0], gap="large")
+
+with top_left:
+    st.markdown("### City Spotlight")
+    st.markdown(
+        f"{badge(spotlight.get('provider_label', 'n/a'), 'info')} "
+        f"{badge(spotlight.get('support_tier', 'n/a'), support_tone(spotlight.get('support_tier', 'n/a')))} "
+        f"{badge(spotlight.get('model', {}).get('forecast_mode_used', 'n/a'), 'neutral')}",
+        unsafe_allow_html=True,
+    )
+    st.subheader(spotlight.get("display_name") or spotlight.get("city"))
+    if spotlight.get("city_notes"):
+        st.caption(spotlight["city_notes"])
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Peak Forecast (m)", f"{float(spotlight.get('peak_prediction_m', 0.0)):.3f}")
+    m2.metric("Station", str(spotlight.get("station", "n/a")))
+    m3.metric("Obs Delay (h)", "n/a" if spotlight.get("source", {}).get("observation_delay_hours") is None else f"{float(spotlight['source']['observation_delay_hours']):.1f}")
+    m4.metric(
+        f"{loaded_view['scenario']} Flood %",
+        "n/a" if spotlight_scenario is None else f"{float(spotlight_scenario.get('flood_ratio', 0.0))*100:.2f}%",
+    )
+
+    forecast_points = spotlight.get("forecast", [])
+    if forecast_points:
+        st.markdown("#### Forecast Trajectory")
+        forecast_df = pd.DataFrame(forecast_points)
+        st.line_chart(forecast_df, x="hour_ahead", y="sea_level_m")
+
+    if spotlight_scenario:
+        c1, c2, c3 = st.columns(3)
+        c1.metric(f"{loaded_view['scenario']} Flood Area", f"{float(spotlight_scenario.get('flood_area_m2', 0.0)):,.0f} m2")
+        c2.metric(f"{loaded_view['scenario']} Components", f"{int(spotlight_scenario.get('component_count', 0))}")
+        c3.metric(f"{loaded_view['scenario']} Risk", str(spotlight_scenario.get("risk_level", "n/a")).upper())
+
+with top_right:
+    st.markdown("### Spotlight Flood Map")
+    spotlight_items = scenario_items_from_payload(spotlight, selected_scenario=loaded_view["scenario"], show_all=loaded_view["show_all"])
+    hotspot_geojson = Path("Backend/sea_level_risk/outputs/realtime") / loaded_view["spotlight_city"] / "hotspots.geojson"
+    layers, view_state = build_2d_layers(
+        spotlight_items,
+        hotspot_geojson=str(hotspot_geojson) if hotspot_geojson.exists() else None,
+    )
+    if layers and view_state:
+        deck = pdk.Deck(
+            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+            initial_view_state=view_state,
+            layers=layers,
+            tooltip={
+                "html": "<b>{scenario_label}</b><br/>Risk: {risk_level}<br/>Priority: {priority_score}",
+                "style": {"backgroundColor": "#10243a", "color": "white"},
+            },
         )
-        st.subheader(spotlight.get("display_name") or spotlight.get("city"))
-        if spotlight.get("city_notes"):
-            st.caption(spotlight["city_notes"])
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Peak Forecast (m)", f"{float(spotlight.get('peak_prediction_m', 0.0)):.3f}")
-        m2.metric("Station", str(spotlight.get("station", "n/a")))
-        m3.metric("Obs Delay (h)", "n/a" if spotlight.get("source", {}).get("observation_delay_hours") is None else f"{float(spotlight['source']['observation_delay_hours']):.1f}")
-        m4.metric(
-            f"{scenario} Flood %",
-            "n/a" if spotlight_scenario is None else f"{float(spotlight_scenario.get('flood_ratio', 0.0))*100:.2f}%",
-        )
-
-        forecast_points = spotlight.get("forecast", [])
-        if forecast_points:
-            st.markdown("#### Forecast Trajectory")
-            forecast_df = pd.DataFrame(forecast_points)
-            st.line_chart(forecast_df, x="hour_ahead", y="sea_level_m")
-
-        if spotlight_scenario:
-            c1, c2, c3 = st.columns(3)
-            c1.metric(f"{scenario} Flood Area", f"{float(spotlight_scenario.get('flood_area_m2', 0.0)):,.0f} m2")
-            c2.metric(f"{scenario} Components", f"{int(spotlight_scenario.get('component_count', 0))}")
-            c3.metric(f"{scenario} Risk", str(spotlight_scenario.get("risk_level", "n/a")).upper())
-
-    with top_right:
-        st.markdown("### Spotlight Flood Map")
-        spotlight_items = scenario_items_from_payload(spotlight, selected_scenario=scenario, show_all=show_all)
-        hotspot_geojson = Path("Backend/sea_level_risk/outputs/realtime") / spotlight_city / "hotspots.geojson"
-        layers, view_state = build_2d_layers(
-            spotlight_items,
-            hotspot_geojson=str(hotspot_geojson) if hotspot_geojson.exists() else None,
-        )
-        if layers and view_state:
-            deck = pdk.Deck(
-                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                initial_view_state=view_state,
-                layers=layers,
-                tooltip={
-                    "html": "<b>{scenario_label}</b><br/>Risk: {risk_level}<br/>Priority: {priority_score}",
-                    "style": {"backgroundColor": "#10243a", "color": "white"},
-                },
+        st.pydeck_chart(deck, use_container_width=True)
+        legend = []
+        for key in ["plus_20cm", "plus_50cm", "plus_100cm"]:
+            style = SCENARIO_2D_STYLE[key]
+            legend.append(
+                f"<span style='display:inline-block;width:12px;height:12px;background:rgba({style['rgba'][0]},{style['rgba'][1]},{style['rgba'][2]},0.8);margin-right:6px;border-radius:2px;'></span>{style['label']}"
             )
-            st.pydeck_chart(deck, use_container_width=True)
-            legend = []
-            for key in ["plus_20cm", "plus_50cm", "plus_100cm"]:
-                style = SCENARIO_2D_STYLE[key]
-                legend.append(
-                    f"<span style='display:inline-block;width:12px;height:12px;background:rgba({style['rgba'][0]},{style['rgba'][1]},{style['rgba'][2]},0.8);margin-right:6px;border-radius:2px;'></span>{style['label']}"
-                )
-            st.markdown(" | ".join(legend), unsafe_allow_html=True)
-        else:
-            st.warning("No spotlight map could be rendered for the selected city/scenario.")
+        st.markdown(" | ".join(legend), unsafe_allow_html=True)
+    else:
+        st.warning("No spotlight map could be rendered for the selected city/scenario.")
 
-    st.markdown("---")
-    st.markdown("### Cross-city Compare")
+st.markdown("---")
+st.markdown("### Cross-city Compare")
 
-    compare_rows = [scenario_summary_row(payload, scenario) for payload in compare_payloads]
+compare_rows = [scenario_summary_row(payload, loaded_view["scenario"]) for payload in compare_payloads]
+if compare_rows:
     compare_df = pd.DataFrame(compare_rows).sort_values(["support_tier", "flood_ratio_pct", "peak_prediction_m"], ascending=[True, False, False], na_position="last")
 
     t1, t2 = st.columns([1.4, 1.0], gap="large")
@@ -257,22 +433,22 @@ if run:
         if not risk_df.empty:
             st.markdown("#### Scenario Compare")
             st.bar_chart(risk_df)
-
-    st.markdown("### Executive Takeaways")
-    takeaway_cols = st.columns(min(4, max(1, len(compare_rows))))
-    for idx, row in enumerate(compare_rows[: len(takeaway_cols)]):
-        tone = support_tone(row["support_tier"])
-        with takeaway_cols[idx]:
-            st.markdown(f"<div class='glass'><strong>{row['city']}</strong><br/>{badge(row['support_tier'], tone)}<br/><br/>Peak forecast: <strong>{row['peak_prediction_m']:.3f} m</strong><br/>{scenario}: <strong>{0.0 if row['flood_ratio_pct'] is None else row['flood_ratio_pct']:.2f}%</strong><br/>Delay: <strong>{'n/a' if row['delay_h'] is None else str(row['delay_h']) + ' h'}</strong></div>", unsafe_allow_html=True)
-
-    st.markdown("### Method And Limits")
-    st.markdown(
-        """
-        - Realtime water level comes from official NOAA gauges where available, and IOC public feeds where NOAA is unavailable.
-        - Forecast is deep-learning only for Honolulu at the moment; other cities use a tide-aware short-horizon baseline.
-        - Flood polygons are GIS threshold outputs on Copernicus DEM, filtered to coast-connected components.
-        - `Amsterdam` is shown as a delayed regional proxy. It should not be presented as a direct Amsterdam city gauge.
-        """
-    )
 else:
-    st.info("Configure the spotlight city and compare set, then click `Build Presentation View`.")
+    st.warning("No compare-city payloads are currently available.")
+
+st.markdown("### Executive Takeaways")
+takeaway_cols = st.columns(min(4, max(1, len(compare_rows))))
+for idx, row in enumerate(compare_rows[: len(takeaway_cols)]):
+    tone = support_tone(row["support_tier"])
+    with takeaway_cols[idx]:
+        st.markdown(f"<div class='glass'><strong>{row['city']}</strong><br/>{badge(row['support_tier'], tone)}<br/><br/>Peak forecast: <strong>{row['peak_prediction_m']:.3f} m</strong><br/>{loaded_view['scenario']}: <strong>{0.0 if row['flood_ratio_pct'] is None else row['flood_ratio_pct']:.2f}%</strong><br/>Delay: <strong>{'n/a' if row['delay_h'] is None else str(row['delay_h']) + ' h'}</strong></div>", unsafe_allow_html=True)
+
+st.markdown("### Method And Limits")
+st.markdown(
+    """
+    - Realtime water level comes from official NOAA gauges where available, and IOC public feeds where NOAA is unavailable.
+    - Forecast is deep-learning only for Honolulu at the moment; other cities use a tide-aware short-horizon baseline.
+    - Flood polygons are GIS threshold outputs on Copernicus DEM, filtered to coast-connected components.
+    - `Amsterdam` is shown as a delayed regional proxy. It should not be presented as a direct Amsterdam city gauge.
+    """
+)
