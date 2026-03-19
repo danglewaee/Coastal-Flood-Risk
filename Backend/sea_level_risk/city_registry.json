@@ -30,8 +30,8 @@
     "lon": -71.0589,
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
-    "forecast_mode": "tide_persistence",
-    "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained."
+    "forecast_mode": "city_model_or_baseline",
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
   },
   "newyork": {
     "display_name": "The Battery, New York",
@@ -47,8 +47,8 @@
     "lon": -74.006,
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
-    "forecast_mode": "tide_persistence",
-    "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained."
+    "forecast_mode": "city_model_or_baseline",
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
   },
   "jakarta": {
     "display_name": "Kolinamil, Jakarta Port",
@@ -63,8 +63,8 @@
     "lon": 106.8456,
     "support_tier": "experimental_realtime",
     "proxy_mode": "direct_station",
-    "forecast_mode": "tide_persistence",
-    "notes": "Experimental direct IOC feed. Column 'prs' is used as the most plausible water-level signal from the public table."
+    "forecast_mode": "city_model_or_baseline",
+    "notes": "Experimental direct IOC feed. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline."
   },
   "amsterdam": {
     "display_name": "Amsterdam-region proxy (Hoek van Holland)",
@@ -79,8 +79,8 @@
     "lon": 4.9041,
     "support_tier": "proxy_delayed",
     "proxy_mode": "regional_proxy",
-    "forecast_mode": "tide_persistence",
-    "notes": "Nearest feasible open-coast proxy for Amsterdam. Public IOC feed is often delayed; treat results as regional proxy, not a true realtime Amsterdam city gauge."
+    "forecast_mode": "city_model_or_baseline",
+    "notes": "Nearest feasible open-coast proxy for Amsterdam. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline. Treat outputs as regional proxy, not a true realtime Amsterdam city gauge."
   },
   "miami": {
     "display_name": "Virginia Key, Miami",
@@ -96,8 +96,8 @@
     "lon": -80.1918,
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
-    "forecast_mode": "tide_persistence",
-    "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained."
+    "forecast_mode": "city_model_or_baseline",
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
   },
   "sanfrancisco": {
     "display_name": "San Francisco",
@@ -113,7 +113,7 @@
     "lon": -122.4194,
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
-    "forecast_mode": "tide_persistence",
-    "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained."
+    "forecast_mode": "city_model_or_baseline",
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
   }
 }

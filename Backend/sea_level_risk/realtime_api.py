@@ -19,6 +19,7 @@ from .forecast import recursive_forecast_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_from_frame
 from .gis import dem_to_flood_polygon
 from .hydro import load_hydro_override
+from .model_registry import DEFAULT_MODELS_ROOT, resolve_city_model
 from .priority import build_hotspots_from_scenarios
 
 
@@ -47,9 +48,17 @@ def _slugify_station_ref(provider: str, station_ref: str) -> str:
 
 
 class RealtimeService:
-    def __init__(self, model_path: str, metadata_path: str, default_dem_path: str | None = None):
+    def __init__(
+        self,
+        model_path: str,
+        metadata_path: str,
+        default_dem_path: str | None = None,
+        models_root: str | None = None,
+    ):
         self.model = None
         self.metadata: dict = {}
+        self.global_model_path = model_path
+        self.global_metadata_path = metadata_path
         model_file = Path(model_path)
         metadata_file = Path(metadata_path)
         if model_file.exists() and metadata_file.exists():
@@ -57,6 +66,8 @@ class RealtimeService:
             self.metadata = json.loads(metadata_file.read_text(encoding="utf-8-sig"))
 
         self.default_dem_path = default_dem_path
+        self.models_root = Path(models_root) if models_root else DEFAULT_MODELS_ROOT
+        self._city_model_cache: dict[str, tuple[object, dict, dict]] = {}
         self.city_registry = load_city_registry()
 
     def _resolve_city_config(self, city: str | None, provider: str | None, station: str | None) -> tuple[str | None, dict]:
@@ -185,9 +196,48 @@ class RealtimeService:
         }
         return frame, meta
 
-    def _forecast(self, cfg: dict, df: pd.DataFrame, horizon: int) -> tuple[np.ndarray, str, str | None]:
+    def _load_city_model_bundle(self, city_key: str | None) -> tuple[object, dict, dict] | None:
+        if not city_key:
+            return None
+
+        city_slug = city_key.strip().lower()
+        if city_slug in self._city_model_cache:
+            return self._city_model_cache[city_slug]
+
+        spec = resolve_city_model(city_slug, models_root=self.models_root)
+        if spec is None:
+            return None
+
+        model = load_model(spec["model_path"], compile=False)
+        metadata = json.loads(Path(spec["metadata_path"]).read_text(encoding="utf-8-sig"))
+        bundle = (model, metadata, spec)
+        self._city_model_cache[city_slug] = bundle
+        return bundle
+
+    def _forecast(
+        self,
+        cfg: dict,
+        df: pd.DataFrame,
+        horizon: int,
+        city_key: str | None = None,
+    ) -> tuple[np.ndarray, str, str | None, dict | None]:
         requested_mode = cfg.get("forecast_mode", "tide_persistence")
         recent = df["sea_level"].to_numpy(dtype=np.float32)
+        city_bundle = self._load_city_model_bundle(city_key)
+
+        if city_bundle is not None:
+            city_model, city_metadata, city_spec = city_bundle
+            preds = recursive_forecast_with_loaded_model(
+                model=city_model,
+                metadata=city_metadata,
+                recent_values=recent,
+                horizon_hours=horizon,
+            )
+            return preds, "model_recursive", None, {
+                **city_spec,
+                "lookback_hours": int(city_metadata.get("lookback_hours", 24)),
+                "model_type": city_metadata.get("model_type") or city_spec.get("model_type"),
+            }
 
         if requested_mode == "model_recursive" and self.model is not None and self.metadata:
             preds = recursive_forecast_with_loaded_model(
@@ -196,15 +246,25 @@ class RealtimeService:
                 recent_values=recent,
                 horizon_hours=horizon,
             )
-            return preds, "model_recursive", None
+            return preds, "model_recursive", None, {
+                "city": city_key,
+                "model_path": self.global_model_path,
+                "metadata_path": self.global_metadata_path,
+                "model_type": self.metadata.get("model_type"),
+                "model_dir": str(Path(self.global_model_path).parent),
+                "lookback_hours": int(self.metadata.get("lookback_hours", 24)),
+            }
 
         note = None
         mode_used = requested_mode
         if requested_mode == "model_recursive":
             note = "Configured deep-learning model was unavailable for this request. Falling back to tide-aware baseline."
             mode_used = "tide_persistence_fallback"
+        elif requested_mode == "city_model_or_baseline":
+            note = "No city-specific deep-learning model is available yet for this city. Using tide-aware baseline."
+            mode_used = "tide_persistence_fallback"
         preds = tide_persistence_forecast_from_frame(df, horizon_hours=horizon)
-        return preds, mode_used, note
+        return preds, mode_used, note, None
 
     def predict(
         self,
@@ -227,7 +287,7 @@ class RealtimeService:
             datum=datum,
         )
 
-        preds, forecast_mode_used, forecast_note = self._forecast(cfg=cfg, df=df, horizon=horizon)
+        preds, forecast_mode_used, forecast_note, model_spec = self._forecast(cfg=cfg, df=df, horizon=horizon, city_key=city_key)
         dem_path_resolved = self._resolve_dem_path(cfg=cfg, dem_path=dem_path, auto_dem=auto_dem)
 
         last_obs_ts = pd.Timestamp(df["timestamp"].iloc[-1])
@@ -251,13 +311,16 @@ class RealtimeService:
             "units": "meters",
             "city_notes": cfg.get("notes"),
             "model": {
-                "type": self.metadata.get("model_type", "baseline")
+                "type": (model_spec or {}).get("model_type", "baseline_tide_persistence")
                 if forecast_mode_used == "model_recursive"
                 else "baseline_tide_persistence",
-                "lookback_hours": int(self.metadata.get("lookback_hours", 24)) if self.metadata else 24,
+                "lookback_hours": int((model_spec or {}).get("lookback_hours", 24)),
                 "requested_forecast_mode": cfg.get("forecast_mode", "tide_persistence"),
                 "forecast_mode_used": forecast_mode_used,
                 "forecast_note": forecast_note,
+                "model_path": (model_spec or {}).get("model_path"),
+                "metadata_path": (model_spec or {}).get("metadata_path"),
+                "city_model_active": model_spec is not None,
             },
             "source": {
                 "status": fetch_meta.get("status", "ok"),
@@ -431,11 +494,21 @@ class RealtimeService:
         }
 
 
-def create_app(model_path: str, metadata_path: str, dem_path: str | None = None) -> Flask:
+def create_app(
+    model_path: str,
+    metadata_path: str,
+    dem_path: str | None = None,
+    models_root: str | None = None,
+) -> Flask:
     app = Flask(__name__)
     CORS(app)
 
-    service = RealtimeService(model_path=model_path, metadata_path=metadata_path, default_dem_path=dem_path)
+    service = RealtimeService(
+        model_path=model_path,
+        metadata_path=metadata_path,
+        default_dem_path=dem_path,
+        models_root=models_root,
+    )
 
     @app.get("/health")
     def health():
@@ -509,13 +582,14 @@ def main():
     parser = argparse.ArgumentParser(description="Realtime sea-level forecast API")
     parser.add_argument("--model", default="Backend/sea_level_risk/outputs/sea_level_axial_lstm.keras")
     parser.add_argument("--metadata", default="Backend/sea_level_risk/outputs/metadata.json")
+    parser.add_argument("--models-root", default="Backend/sea_level_risk/outputs/models")
     parser.add_argument("--dem", default="data/honolulu_dem.tif")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
     dem_path = args.dem if Path(args.dem).exists() else None
-    app = create_app(model_path=args.model, metadata_path=args.metadata, dem_path=dem_path)
+    app = create_app(model_path=args.model, metadata_path=args.metadata, dem_path=dem_path, models_root=args.models_root)
     app.run(host=args.host, port=args.port, debug=False)
 
 

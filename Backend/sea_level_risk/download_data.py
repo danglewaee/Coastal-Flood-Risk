@@ -49,24 +49,29 @@ def download_noaa_hourly(
     if end_ts < start_ts:
         raise ValueError("end_date must be >= begin_date")
 
-    year_starts = pd.date_range(start=start_ts, end=end_ts, freq="YS")
-    if len(year_starts) == 0:
-        year_starts = pd.DatetimeIndex([pd.Timestamp(year=start_ts.year, month=1, day=1)])
-
     chunks = []
-    for ys in year_starts:
-        chunk_start = max(start_ts, ys)
-        chunk_end = min(end_ts, pd.Timestamp(year=ys.year, month=12, day=31))
-        if chunk_start > chunk_end:
-            continue
+    if product == "water_level":
+        chunk_ranges = []
+        chunk_start = start_ts
+        while chunk_start <= end_ts:
+            chunk_end = min(end_ts, chunk_start + pd.Timedelta(days=30))
+            chunk_ranges.append((chunk_start, chunk_end))
+            chunk_start = chunk_end + pd.Timedelta(days=1)
+    else:
+        year_starts = pd.date_range(start=start_ts, end=end_ts, freq="YS")
+        if len(year_starts) == 0:
+            year_starts = pd.DatetimeIndex([pd.Timestamp(year=start_ts.year, month=1, day=1)])
+        chunk_ranges = [
+            (max(start_ts, ys), min(end_ts, pd.Timestamp(year=ys.year, month=12, day=31)))
+            for ys in year_starts
+            if max(start_ts, ys) <= min(end_ts, pd.Timestamp(year=ys.year, month=12, day=31))
+        ]
 
-        chunk_begin = chunk_start.strftime("%Y%m%d")
-        chunk_finish = chunk_end.strftime("%Y%m%d")
-
+    for chunk_start, chunk_end in chunk_ranges:
         df_chunk = _fetch_noaa_chunk(
             station=station,
-            begin_date=chunk_begin,
-            end_date=chunk_finish,
+            begin_date=chunk_start.strftime("%Y%m%d"),
+            end_date=chunk_end.strftime("%Y%m%d"),
             product=product,
             datum=datum,
             units=units,

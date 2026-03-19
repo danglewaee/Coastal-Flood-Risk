@@ -37,8 +37,8 @@ DEFAULT_CITY_REGISTRY = {
         "lon": -71.0589,
         "support_tier": "official_realtime",
         "proxy_mode": "direct_station",
-        "forecast_mode": "tide_persistence",
-        "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained.",
+        "forecast_mode": "city_model_or_baseline",
+        "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
     },
     "newyork": {
         "display_name": "The Battery, New York",
@@ -54,8 +54,8 @@ DEFAULT_CITY_REGISTRY = {
         "lon": -74.0060,
         "support_tier": "official_realtime",
         "proxy_mode": "direct_station",
-        "forecast_mode": "tide_persistence",
-        "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained.",
+        "forecast_mode": "city_model_or_baseline",
+        "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
     },
     "jakarta": {
         "display_name": "Kolinamil, Jakarta Port",
@@ -70,8 +70,8 @@ DEFAULT_CITY_REGISTRY = {
         "lon": 106.8456,
         "support_tier": "experimental_realtime",
         "proxy_mode": "direct_station",
-        "forecast_mode": "tide_persistence",
-        "notes": "Experimental direct IOC feed. Column 'prs' is used as the most plausible water-level signal from the public table.",
+        "forecast_mode": "city_model_or_baseline",
+        "notes": "Experimental direct IOC feed. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline.",
     },
     "amsterdam": {
         "display_name": "Amsterdam-region proxy (Hoek van Holland)",
@@ -86,8 +86,8 @@ DEFAULT_CITY_REGISTRY = {
         "lon": 4.9041,
         "support_tier": "proxy_delayed",
         "proxy_mode": "regional_proxy",
-        "forecast_mode": "tide_persistence",
-        "notes": "Nearest feasible open-coast proxy for Amsterdam. Public IOC feed is often delayed; treat results as regional proxy, not a true realtime Amsterdam city gauge.",
+        "forecast_mode": "city_model_or_baseline",
+        "notes": "Nearest feasible open-coast proxy for Amsterdam. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline. Treat outputs as regional proxy, not a true realtime Amsterdam city gauge.",
     },
     "miami": {
         "display_name": "Virginia Key, Miami",
@@ -103,8 +103,8 @@ DEFAULT_CITY_REGISTRY = {
         "lon": -80.1918,
         "support_tier": "official_realtime",
         "proxy_mode": "direct_station",
-        "forecast_mode": "tide_persistence",
-        "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained.",
+        "forecast_mode": "city_model_or_baseline",
+        "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
     },
     "sanfrancisco": {
         "display_name": "San Francisco",
@@ -120,8 +120,8 @@ DEFAULT_CITY_REGISTRY = {
         "lon": -122.4194,
         "support_tier": "official_realtime",
         "proxy_mode": "direct_station",
-        "forecast_mode": "tide_persistence",
-        "notes": "Direct NOAA station. Forecast currently uses tide-aware baseline until a city-specific model is trained.",
+        "forecast_mode": "city_model_or_baseline",
+        "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
     },
 }
 
@@ -141,7 +141,7 @@ def _normalize_city_entry(city_key: str, raw: dict) -> dict:
     if merged["provider"] == "noaa" and not merged.get("provider_product"):
         merged["provider_product"] = "water_level"
     if not merged.get("forecast_mode"):
-        merged["forecast_mode"] = "tide_persistence"
+        merged["forecast_mode"] = "city_model_or_baseline"
     if not merged.get("support_tier"):
         merged["support_tier"] = "official_realtime" if merged["provider"] == "noaa" else "experimental_realtime"
     if not merged.get("proxy_mode"):
@@ -168,4 +168,3 @@ def load_city_registry(path: str = "Backend/sea_level_risk/city_registry.json") 
             normalized[key] = deepcopy(value)
 
     return normalized
-

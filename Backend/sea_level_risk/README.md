@@ -15,11 +15,47 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train \
   --model-type axial_lstm
 ```
 
+## Train city-specific deep-learning models
+Train one city at a time into `Backend/sea_level_risk/outputs/models/<city>/`.
+
+Boston example (automatic NOAA hourly history download):
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
+  --city boston \
+  --begin 20100101 \
+  --end 20251231 \
+  --model-type axial_lstm
+```
+
+New York example:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
+  --city newyork \
+  --begin 20100101 \
+  --end 20251231 \
+  --model-type axial_lstm
+```
+
+If a city does not have automatic hourly history download implemented, provide your own hourly CSV:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
+  --city jakarta \
+  --csv data/jakarta_hourly.csv \
+  --time-col timestamp \
+  --value-col sea_level \
+  --model-type axial_lstm
+```
+
+Important:
+- The local files `data/boston.csv`, `data/newyork.csv`, `data/jakarta.csv`, and `data/amsterdam.csv` are coarse monthly trend series, not hourly gauge histories. Do not use them for the current short-horizon forecast task.
+- The realtime API will automatically prefer `Backend/sea_level_risk/outputs/models/<city>/` when a city-specific model exists. Otherwise it falls back to the tide-aware baseline.
+
 ## Realtime API (multi-city, provider-aware)
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.realtime_api \
   --model Backend/sea_level_risk/outputs/sea_level_axial_lstm.keras \
   --metadata Backend/sea_level_risk/outputs/metadata.json \
+  --models-root Backend/sea_level_risk/outputs/models \
   --host 127.0.0.1 --port 8000
 ```
 
@@ -35,7 +71,9 @@ Endpoints:
 
 Notes:
 - `city_registry.json` now stores provider/station metadata, support tier, proxy mode, forecast mode, and DEM hints per city.
-- `honolulu` uses the trained deep-learning model. The new large-city entries currently use a tide-aware baseline until city-specific models are trained.
+- `honolulu` uses the trained deep-learning model.
+- Any city with a trained model under `Backend/sea_level_risk/outputs/models/<city>/` will use that model automatically.
+- Cities without a city-specific model fall back to the tide-aware baseline.
 - NOAA realtime fetch uses `water_level`, not `hourly_height`.
 - IOC realtime fetch parses the public HTML table feed and resamples it to hourly series.
 - `amsterdam` is implemented as `Amsterdam-region proxy (Hoek van Holland)`. Treat it as delayed regional proxy mode, not a direct Amsterdam city gauge.
@@ -43,10 +81,10 @@ Notes:
 
 ## Supported city modes
 - `honolulu`: official NOAA realtime + local deep model
-- `boston`: official NOAA realtime + tide-aware baseline
-- `newyork`: official NOAA realtime + tide-aware baseline
-- `jakarta`: experimental IOC realtime + tide-aware baseline
-- `amsterdam`: delayed IOC coastal proxy + tide-aware baseline
+- `boston`: official NOAA realtime + city model when trained, otherwise tide-aware baseline
+- `newyork`: official NOAA realtime + city model when trained, otherwise tide-aware baseline
+- `jakarta`: experimental IOC realtime + city model when trained on hourly data, otherwise tide-aware baseline
+- `amsterdam`: delayed IOC coastal proxy + city model when trained on hourly data, otherwise tide-aware baseline
 
 ## Dashboard (interactive)
 Run the API first, then run dashboard:
@@ -182,6 +220,8 @@ Note:
 
 ## Files
 - `Backend/sea_level_risk/realtime_api.py`: realtime API
+- `Backend/sea_level_risk/model_registry.py`: city-specific model discovery
+- `Backend/sea_level_risk/train_city_model.py`: train one city model into `outputs/models/<city>/`
 - `Backend/sea_level_risk/dashboard_app.py`: 3D dashboard
 - `Backend/sea_level_risk/presentation_app.py`: presentation-ready demo app
 - `Backend/sea_level_risk/city_registry.json`: city registry with provider/support metadata
