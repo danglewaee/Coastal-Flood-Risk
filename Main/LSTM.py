@@ -9,7 +9,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 
 # Load the data
-df = pd.read_csv('d:\CODE\Projects\Sea_Level_Rise\Main\global_mean_sea_level_1993-2024.csv')
+df = pd.read_csv('Main/global_mean_sea_level_1993-2024.csv')
 # Plot the data
 sea_level = df['SmoothedGMSLWithGIASigremoved'].values.reshape(-1, 1)
 time_index = df['YearPlusFraction'].values.reshape(-1, 1)

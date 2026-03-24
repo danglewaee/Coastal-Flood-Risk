@@ -9,7 +9,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
-df = pd.read_csv('d:\CODE\Projects\Sea_Level_Rise\Main\global_mean_sea_level_1993-2024.csv')
+df = pd.read_csv('Main/global_mean_sea_level_1993-2024.csv')
 year = df['YearPlusFraction'].values.reshape(-1, 1)
 sea_level = df['SmoothedGMSLWithGIASigremoved'].values
 

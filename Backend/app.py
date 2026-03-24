@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Load mô hình LSTM
-model = load_model('d:/CODE/Projects/Sea_Level_Rise/Main/lstm_model.h5')
+model = load_model('Main/lstm_model.h5')
 @app.route('/predict', methods=['POST'])
 def predict():
     try:

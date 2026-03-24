@@ -3,7 +3,7 @@ import tensorflow as tf
 
 app = Flask(__name__)
 # Load the pre-trained model
-model = tf.keras.models.load_model('d:/CODE/Projects/Sea_Level_Rise/Main/LSTM_model.h5')
+model = tf.keras.models.load_model('Main/LSTM_model.h5')
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -17,4 +17,4 @@ def predict():
 
 if __name__ == '__main__':
     app.run(debug=True)
-# This code is a Flask application that serves a pre-trained LSTM model for sea level rise prediction.
+# This code is a Flask application that serves a pre-trained LSTM model for legacy sea-level forecasting.

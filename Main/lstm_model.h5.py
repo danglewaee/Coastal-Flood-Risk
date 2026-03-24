@@ -9,7 +9,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 
 # Load the data
-df = pd.read_csv('d:\CODE\Projects\Sea_Level_Rise\Main\global_mean_sea_level_1993-2024.csv')
+df = pd.read_csv('Main/global_mean_sea_level_1993-2024.csv')
 # Plot the data
 sea_level = df['SmoothedGMSLWithGIASigremoved'].values.reshape(-1, 1)
 time_index = df['YearPlusFraction'].values.reshape(-1, 1)
@@ -78,8 +78,8 @@ y_pred = model.predict(X_test)
 y_pred_actual = scaler.inverse_transform(y_pred)
 y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))
 import os
-os.makedirs('d:/CODE/Projects/Sea_Level_Rise/Backend/Models/', exist_ok=True)
-model.save('d:/CODE/Projects/Sea_Level_Rise/Backend/Models/lstm_model.h5')
+os.makedirs('Backend/Models/', exist_ok=True)
+model.save('Backend/Models/lstm_model.h5')
 
 #plot predictions vs actual
 plt.figure(figsize=(12,6))

@@ -1,4 +1,4 @@
-﻿# Coastal Flood Risk
+# Coastal Flood Risk
 
 Realtime sea-level forecasting + GIS flood-risk mapping project.
 
@@ -50,9 +50,9 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.qgis.prepare_qgis_pack
 2. Generate template project in QGIS Python Console:
 ```python
 import sys
-sys.path.append(r"D:\CODE\Projects\Sea_Level_Rise - New ver")
+sys.path.append(r"<repo_root>")
 from Backend.sea_level_risk.qgis.create_qgis_template import create_project
-create_project(r"D:\CODE\Projects\Sea_Level_Rise - New ver\Backend\sea_level_risk\outputs\qgis_packages\<package_folder>")
+create_project(r"<repo_root>\\Backend\\sea_level_risk\\outputs\\qgis_packages\\<package_folder>")
 ```
 
 See:

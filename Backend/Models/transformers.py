@@ -9,7 +9,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
 
 # Load the data
-df = pd.read_csv('d:\\CODE\\Projects\\Sea_Level_Rise\\Main\\global_mean_sea_level_1993-2024.csv')
+df = pd.read_csv('Main/global_mean_sea_level_1993-2024.csv')
 
 # Plot the data
 plt.style.use('seaborn-v0_8-whitegrid')

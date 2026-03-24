@@ -2,7 +2,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
-df = pd.read_csv("d:/CODE/Projects/Sea_Level_Rise/8443970_meantrend.csv", delimiter="\t")  # Load your CSV with the full path
+df = pd.read_csv("Test/8443970_meantrend.csv", delimiter="\t")  # Load your CSV with the full path
 
 # Print the columns to debug
 print(df.columns)

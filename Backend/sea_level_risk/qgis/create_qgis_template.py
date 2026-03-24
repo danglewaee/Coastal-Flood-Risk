@@ -177,4 +177,4 @@ def create_project(package_dir: str, out_project: str | None = None, include_lay
 
 # Example usage in QGIS Python Console:
 # from Backend.sea_level_risk.qgis.create_qgis_template import create_project
-# create_project(r"D:\CODE\Projects\Sea_Level_Rise - New ver\Backend\sea_level_risk\outputs\qgis_packages\honolulu_20260314_014207")
+# create_project(r"<repo_root>\\Backend\\sea_level_risk\\outputs\\qgis_packages\\honolulu_20260314_014207")
