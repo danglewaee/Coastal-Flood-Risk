@@ -14,7 +14,13 @@
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
     "forecast_mode": "model_recursive",
-    "notes": "Direct NOAA gauge with local trained deep-learning model."
+    "notes": "Direct NOAA gauge with local trained deep-learning model.",
+    "alert_thresholds_m": {
+      "moderate": 0.15,
+      "high": 0.35,
+      "critical": 0.6
+    },
+    "alert_thresholds_note": "Prototype operational thresholds tuned for rapid monitoring at a steep-island Honolulu gauge; not an official warning standard."
   },
   "boston": {
     "display_name": "Boston Harbor, MA",
@@ -31,7 +37,13 @@
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
     "forecast_mode": "city_model_or_baseline",
-    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
+    "alert_thresholds_m": {
+      "moderate": 0.35,
+      "high": 0.65,
+      "critical": 0.95
+    },
+    "alert_thresholds_note": "Prototype coastal flood-monitoring thresholds for Boston Harbor. Calibrate against local nuisance-flood and high-water guidance before operational use."
   },
   "newyork": {
     "display_name": "The Battery, New York",
@@ -48,7 +60,13 @@
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
     "forecast_mode": "city_model_or_baseline",
-    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
+    "alert_thresholds_m": {
+      "moderate": 0.35,
+      "high": 0.7,
+      "critical": 1.0
+    },
+    "alert_thresholds_note": "Prototype coastal flood-monitoring thresholds for The Battery. Validate against local high-tide and minor coastal flood guidance before operational use."
   },
   "jakarta": {
     "display_name": "Kolinamil, Jakarta Port",
@@ -64,7 +82,13 @@
     "support_tier": "experimental_realtime",
     "proxy_mode": "direct_station",
     "forecast_mode": "city_model_or_baseline",
-    "notes": "Experimental direct IOC feed. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline."
+    "notes": "Experimental direct IOC feed. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline.",
+    "alert_thresholds_m": {
+      "moderate": 0.2,
+      "high": 0.45,
+      "critical": 0.75
+    },
+    "alert_thresholds_note": "Prototype Jakarta thresholds for internal monitoring on an experimental feed. Confirm high-impact decisions with local observations."
   },
   "amsterdam": {
     "display_name": "Amsterdam-region proxy (Hoek van Holland)",
@@ -80,7 +104,13 @@
     "support_tier": "proxy_delayed",
     "proxy_mode": "regional_proxy",
     "forecast_mode": "city_model_or_baseline",
-    "notes": "Nearest feasible open-coast proxy for Amsterdam. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline. Treat outputs as regional proxy, not a true realtime Amsterdam city gauge."
+    "notes": "Nearest feasible open-coast proxy for Amsterdam. Uses a city-specific deep-learning model when an hourly training set exists; otherwise falls back to a tide-aware baseline. Treat outputs as regional proxy, not a true realtime Amsterdam city gauge.",
+    "alert_thresholds_m": {
+      "moderate": 0.2,
+      "high": 0.45,
+      "critical": 0.75
+    },
+    "alert_thresholds_note": "Prototype Amsterdam-region proxy thresholds. Use only as regional context and not as an official Amsterdam warning standard."
   },
   "miami": {
     "display_name": "Virginia Key, Miami",
@@ -97,7 +127,13 @@
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
     "forecast_mode": "city_model_or_baseline",
-    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
+    "alert_thresholds_m": {
+      "moderate": 0.2,
+      "high": 0.45,
+      "critical": 0.75
+    },
+    "alert_thresholds_note": "Prototype coastal flood-monitoring thresholds for Miami/Virginia Key. Validate against local sunny-day flooding guidance before operational use."
   },
   "sanfrancisco": {
     "display_name": "San Francisco",
@@ -114,6 +150,12 @@
     "support_tier": "official_realtime",
     "proxy_mode": "direct_station",
     "forecast_mode": "city_model_or_baseline",
-    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline."
+    "notes": "Direct NOAA station. Uses a city-specific deep-learning model when available; otherwise falls back to a tide-aware baseline.",
+    "alert_thresholds_m": {
+      "moderate": 0.25,
+      "high": 0.5,
+      "critical": 0.8
+    },
+    "alert_thresholds_note": "Prototype coastal flood-monitoring thresholds for San Francisco. Validate against local advisory thresholds before operational use."
   }
 }

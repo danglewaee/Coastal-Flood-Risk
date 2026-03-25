@@ -67,10 +67,12 @@ Endpoints:
 - `GET /realtime/forecast?city=newyork&horizon=6&hours_back=96&auto_dem=1`
 - `GET /realtime/forecast?city=jakarta&horizon=6&hours_back=96&auto_dem=1`
 - `GET /realtime/forecast?city=amsterdam&horizon=6&hours_back=96&auto_dem=1`
+- `GET /realtime/briefing?city=boston&scenario=plus_50cm&horizon=6&hours_back=96&auto_dem=1`
 - `GET /realtime/forecast?provider=noaa&station=1612340&horizon=6&hours_back=96&auto_dem=1`
 
 Notes:
 - `city_registry.json` now stores provider/station metadata, support tier, proxy mode, forecast mode, and DEM hints per city.
+- `city_registry.json` also stores prototype operational alert thresholds and notes per city.
 - `honolulu` uses the trained deep-learning model.
 - Any city with a trained model under `Backend/sea_level_risk/outputs/models/<city>/` will use that model automatically.
 - Cities without a city-specific model fall back to the tide-aware baseline.
@@ -95,10 +97,12 @@ Backend/.venv311/Scripts/streamlit run Backend/sea_level_risk/dashboard_app.py
 Dashboard features:
 - choose a coastal city
 - fetch provider-aware realtime data
+- render operational summary, alert level, and recommended actions for the selected scenario
 - render a practical 2D flood polygon map on a real basemap
 - render forecast line
 - render 3D flood map for `+20cm / +50cm / +100cm`
 - show provider, support tier, forecast mode, and delay notes
+- download a city/scenario operational briefing as Markdown
 - switch to `Multi-city compare` to compare Honolulu / Boston / New York / Jakarta / Amsterdam in one view
 
 ## Presentation-ready app
@@ -119,6 +123,7 @@ powershell -ExecutionPolicy Bypass -File Backend/sea_level_risk/stop_presentatio
 
 Presentation app layout:
 - city spotlight
+- operational summary with alert/confidence and downloadable briefing
 - 2D flood map on a basemap
 - forecast trajectory
 - cross-city compare table

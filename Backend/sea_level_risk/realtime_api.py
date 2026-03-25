@@ -20,6 +20,7 @@ from .forecast_baselines import tide_persistence_forecast_from_frame
 from .gis import dem_to_flood_polygon
 from .hydro import load_hydro_override
 from .model_registry import DEFAULT_MODELS_ROOT, resolve_city_model
+from .operational_summary import build_briefing_markdown, build_operational_summary
 from .priority import build_hotspots_from_scenarios
 
 
@@ -423,6 +424,16 @@ class RealtimeService:
                 )
             payload["scenarios"] = scenarios
 
+        if payload.get("scenarios"):
+            payload["operational_summaries"] = {
+                item["scenario"]: build_operational_summary(payload, city_cfg=cfg, scenario_name=item["scenario"])
+                for item in payload["scenarios"]
+            }
+            default_basis = "plus_50cm" if "plus_50cm" in payload["operational_summaries"] else next(iter(payload["operational_summaries"]))
+            payload["operational_summary"] = payload["operational_summaries"][default_basis]
+        else:
+            payload["operational_summary"] = build_operational_summary(payload, city_cfg=cfg, scenario_name=None)
+
         return payload
 
     def get_hotspots(
@@ -572,6 +583,40 @@ def create_app(
                 datum=datum,
             )
             return jsonify(result)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.get("/realtime/briefing")
+    def realtime_briefing():
+        city = request.args.get("city")
+        station = request.args.get("station")
+        provider = request.args.get("provider")
+        horizon = int(request.args.get("horizon", 6))
+        hours_back = int(request.args.get("hours_back", 96))
+        datum = request.args.get("datum", "MSL")
+        dem = request.args.get("dem")
+        auto_dem = request.args.get("auto_dem", "1") not in {"0", "false", "False"}
+        use_hydro = request.args.get("use_hydro", "1") not in {"0", "false", "False"}
+        scenario_name = request.args.get("scenario")
+
+        try:
+            result = service.predict(
+                city=city,
+                station=station,
+                provider=provider,
+                horizon=horizon,
+                hours_back=hours_back,
+                datum=datum,
+                dem_path=dem,
+                auto_dem=auto_dem,
+                scenario_names=[scenario_name] if scenario_name else None,
+                use_hydro=use_hydro,
+            )
+            city_key = result.get("city")
+            city_cfg = dict(service.city_registry.get(city_key, {}))
+            summary = build_operational_summary(result, city_cfg=city_cfg, scenario_name=scenario_name)
+            markdown = build_briefing_markdown(result, city_cfg=city_cfg, scenario_name=scenario_name)
+            return jsonify({"summary": summary, "markdown": markdown, "city": city_key, "scenario": summary.get("scenario_basis")})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 

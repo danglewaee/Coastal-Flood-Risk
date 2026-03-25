@@ -13,10 +13,12 @@ if str(REPO_ROOT) not in sys.path:
 try:
     from .asset_readiness import split_city_keys_by_map_status
     from .city_registry import load_city_registry
+    from .operational_summary import build_briefing_markdown
     from .render_2d import SCENARIO_2D_STYLE, build_2d_layers
 except ImportError:
     from Backend.sea_level_risk.asset_readiness import split_city_keys_by_map_status
     from Backend.sea_level_risk.city_registry import load_city_registry
+    from Backend.sea_level_risk.operational_summary import build_briefing_markdown
     from Backend.sea_level_risk.render_2d import SCENARIO_2D_STYLE, build_2d_layers
 
 
@@ -148,6 +150,18 @@ def support_tone(value: str) -> str:
     return "neutral"
 
 
+def alert_tone(value: str) -> str:
+    if value == "critical":
+        return "bad"
+    if value == "high":
+        return "warn"
+    if value == "moderate":
+        return "info"
+    if value == "low":
+        return "good"
+    return "neutral"
+
+
 def scenario_summary_row(payload: dict, selected_scenario: str) -> dict:
     scenario = next((s for s in payload.get("scenarios", []) if s["scenario"] == selected_scenario), None)
     return {
@@ -163,6 +177,13 @@ def scenario_summary_row(payload: dict, selected_scenario: str) -> dict:
         "components": None if scenario is None else int(scenario.get("component_count", 0)),
         "risk_level": None if scenario is None else scenario.get("risk_level"),
     }
+
+
+def selected_operational_summary(payload: dict, scenario: str) -> dict | None:
+    summaries = payload.get("operational_summaries") or {}
+    if scenario in summaries:
+        return summaries[scenario]
+    return payload.get("operational_summary")
 
 
 st.set_page_config(page_title="Coastal Flood Risk", layout="wide")
@@ -376,6 +397,32 @@ with top_left:
         "n/a" if spotlight_scenario is None else f"{float(spotlight_scenario.get('flood_ratio', 0.0))*100:.2f}%",
     )
 
+    spotlight_summary = selected_operational_summary(spotlight, loaded_view["scenario"])
+    if spotlight_summary:
+        st.markdown("#### Operational Summary")
+        st.markdown(
+            f"{badge(str(spotlight_summary.get('alert_level', 'n/a')).upper(), alert_tone(spotlight_summary.get('alert_level', 'n/a')))} "
+            f"{badge(str(spotlight_summary.get('confidence', 'n/a')).upper(), 'neutral')}",
+            unsafe_allow_html=True,
+        )
+        st.markdown(f"**{spotlight_summary.get('headline', 'No operational headline available.')}**")
+        st.caption(spotlight_summary.get("summary_text", ""))
+        for item in spotlight_summary.get("recommended_actions", []):
+            st.markdown(f"- {item}")
+        st.caption(spotlight_summary.get("thresholds_note", ""))
+
+        briefing_md = build_briefing_markdown(
+            spotlight,
+            city_cfg=registry.get(loaded_view["spotlight_city"], {}),
+            scenario_name=spotlight_summary.get("scenario_basis"),
+        )
+        st.download_button(
+            "Download Operational Briefing",
+            data=briefing_md,
+            file_name=f"{loaded_view['spotlight_city']}_{spotlight_summary.get('scenario_basis') or 'briefing'}_briefing.md",
+            mime="text/markdown",
+        )
+
     forecast_points = spotlight.get("forecast", [])
     if forecast_points:
         st.markdown("#### Forecast Trajectory")
@@ -447,7 +494,7 @@ st.markdown("### Method And Limits")
 st.markdown(
     """
     - Realtime water level comes from official NOAA gauges where available, and IOC public feeds where NOAA is unavailable.
-    - Forecast is deep-learning only for Honolulu at the moment; other cities use a tide-aware short-horizon baseline.
+    - Forecast uses city-specific deep-learning models where hourly training histories are available; lower-data cities fall back to a tide-aware short-horizon baseline.
     - Flood polygons are GIS threshold outputs on Copernicus DEM, filtered to coast-connected components.
     - `Amsterdam` is shown as a delayed regional proxy. It should not be presented as a direct Amsterdam city gauge.
     """

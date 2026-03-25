@@ -14,11 +14,13 @@ if str(REPO_ROOT) not in sys.path:
 try:
     from .asset_readiness import split_city_keys_by_map_status
     from .city_registry import load_city_registry
+    from .operational_summary import build_briefing_markdown
     from .render_2d import SCENARIO_2D_STYLE, build_2d_layers
     from .render_3d import render_3d_flood_map_multi
 except ImportError:
     from Backend.sea_level_risk.asset_readiness import split_city_keys_by_map_status
     from Backend.sea_level_risk.city_registry import load_city_registry
+    from Backend.sea_level_risk.operational_summary import build_briefing_markdown
     from Backend.sea_level_risk.render_2d import SCENARIO_2D_STYLE, build_2d_layers
     from Backend.sea_level_risk.render_3d import render_3d_flood_map_multi
 
@@ -117,8 +119,54 @@ def render_header(payload: dict):
         )
 
 
+def selected_operational_summary(payload: dict, scenario: str) -> dict | None:
+    summaries = payload.get("operational_summaries") or {}
+    if scenario in summaries:
+        return summaries[scenario]
+    return payload.get("operational_summary")
+
+
+def render_operational_summary(payload: dict, scenario: str, city_cfg: dict):
+    summary = selected_operational_summary(payload, scenario)
+    if not summary:
+        return
+
+    st.subheader("Operational Summary")
+    st.markdown(risk_badge(summary.get("alert_level", "unknown")), unsafe_allow_html=True)
+    st.markdown(f"**{summary.get('headline', 'No operational headline available.')}**")
+    st.caption(summary.get("summary_text", ""))
+
+    metrics = st.columns(4)
+    metrics[0].metric("Alert Level", str(summary.get("alert_level", "n/a")).upper())
+    metrics[1].metric("Confidence", str(summary.get("confidence", "n/a")).upper())
+    metrics[2].metric(
+        "Flood Area",
+        "n/a" if summary.get("flood_area_m2") is None else f"{float(summary['flood_area_m2']):,.0f} m2",
+    )
+    metrics[3].metric(
+        "Components",
+        "n/a" if summary.get("component_count") is None else f"{int(summary['component_count'])}",
+    )
+
+    st.markdown("**Recommended Actions**")
+    for item in summary.get("recommended_actions", []):
+        st.markdown(f"- {item}")
+    st.caption(summary.get("thresholds_note", ""))
+
+    briefing_md = build_briefing_markdown(payload, city_cfg=city_cfg, scenario_name=summary.get("scenario_basis"))
+    st.download_button(
+        "Download Briefing (Markdown)",
+        data=briefing_md,
+        file_name=f"{payload.get('city') or 'city'}_{summary.get('scenario_basis') or 'briefing'}_briefing.md",
+        mime="text/markdown",
+        use_container_width=False,
+    )
+
+
 def render_single_city(payload: dict, api_base: str, city: str, horizon: int, hours_back: int, scenario: str, show_all: bool, map_mode: str, camera_preset: str, downsample: int, zex: float):
     render_header(payload)
+    city_cfg = registry.get(city, {})
+    render_operational_summary(payload, scenario=scenario, city_cfg=city_cfg)
 
     scenarios = payload.get("scenarios", [])
     items = scenario_items_from_payload(payload, selected_scenario=scenario, show_all=show_all)
@@ -254,6 +302,17 @@ def render_compare(payloads: list[dict], selected_scenario: str):
                 )
             if payload.get("source", {}).get("note"):
                 st.caption(payload["source"]["note"])
+
+    st.subheader("Operational Briefs")
+    for payload in payloads:
+        summary = selected_operational_summary(payload, selected_scenario)
+        if not summary:
+            continue
+        with st.expander(f"{payload.get('display_name') or payload.get('city')} | {str(summary.get('alert_level', 'n/a')).upper()}"):
+            st.markdown(f"**{summary.get('headline', 'No headline available.')}**")
+            st.caption(summary.get("summary_text", ""))
+            for item in summary.get("recommended_actions", []):
+                st.markdown(f"- {item}")
 
 
 st.set_page_config(page_title="Coastal Flood Risk", layout="wide")
