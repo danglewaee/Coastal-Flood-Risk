@@ -19,11 +19,20 @@ Thumbs.db
 
 # Data outputs
 Backend/sea_level_risk/outputs/
-data/processed/
-data/dem_cache/
+Backend/sea_level_risk/run_logs/
+Backend/sea_level_risk/*.cmd
+data/
 
 # Large datasets
 *.tar.gz
 *.pth
 *.h5
 *.keras
+
+# Local app/workspace clutter
+Frontend/
+Backend/Models/*.png
+Backend/Models/tempCodeRunnerFile.python
+Main/*.png
+Main/tempCodeRunnerFile.python
+tmp_*.log
