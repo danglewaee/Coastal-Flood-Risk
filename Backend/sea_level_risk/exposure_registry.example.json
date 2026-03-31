@@ -1,0 +1,22 @@
+{
+  "boston": [
+    {
+      "name": "roads",
+      "path": "data/exposure/boston/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/boston/critical_facilities.geojson"
+    }
+  ],
+  "newyork": [
+    {
+      "name": "roads",
+      "path": "data/exposure/newyork/roads.geojson"
+    },
+    {
+      "name": "hospitals",
+      "path": "data/exposure/newyork/hospitals.geojson"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 from pathlib import Path
 
 import geopandas as gpd
@@ -20,12 +20,7 @@ def _risk_label(score: float) -> str:
     return "critical"
 
 
-def build_hotspots_from_scenarios(
-    scenario_records: list[dict],
-    out_geojson: str,
-    out_csv: str,
-    top_n: int = 20,
-) -> dict:
+def _rank_hotspots_dataframe(scenario_records: list[dict]) -> gpd.GeoDataFrame:
     rows = []
 
     for rec in scenario_records:
@@ -46,8 +41,10 @@ def build_hotspots_from_scenarios(
 
         gdf_area = gdf.to_crs(epsg=EQUAL_AREA_EPSG)
         areas = gdf_area.geometry.area.to_numpy(dtype=float)
+        reps = gdf_area.geometry.representative_point()
+        reps_ll = gpd.GeoSeries(reps, crs=f"EPSG:{EQUAL_AREA_EPSG}").to_crs(epsg=4326)
 
-        for idx, (geom, area_m2) in enumerate(zip(gdf.geometry, areas), start=1):
+        for idx, (geom, area_m2, rep_pt) in enumerate(zip(gdf.geometry, areas, reps_ll), start=1):
             rows.append(
                 {
                     "scenario": scenario,
@@ -55,6 +52,8 @@ def build_hotspots_from_scenarios(
                     "polygon_id": idx,
                     "flood_ratio": flood_ratio,
                     "area_m2": float(area_m2),
+                    "centroid_lon": float(rep_pt.x),
+                    "centroid_lat": float(rep_pt.y),
                     "geometry": geom,
                 }
             )
@@ -75,21 +74,88 @@ def build_hotspots_from_scenarios(
         )
     )
 
-    df = df.sort_values("priority_score", ascending=False).reset_index(drop=True)
-    df["rank"] = np.arange(1, len(df) + 1)
+    df = df.sort_values(["scenario", "priority_score"], ascending=[True, False]).reset_index(drop=True)
+    df["rank"] = df.groupby("scenario").cumcount() + 1
     df["risk_level"] = df["priority_score"].apply(_risk_label)
+    df["hotspot_label"] = df.apply(lambda row: f"{row['scenario']} hotspot #{int(row['rank'])}", axis=1)
+    return gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
 
-    top_df = df.head(top_n).copy()
 
-    gdf_out = gpd.GeoDataFrame(top_df, geometry="geometry", crs="EPSG:4326")
+def rank_hotspots_from_scenarios(
+    scenario_records: list[dict],
+    top_n: int = 20,
+) -> gpd.GeoDataFrame:
+    gdf = _rank_hotspots_dataframe(scenario_records)
+    top = (
+        gdf.sort_values(["scenario", "priority_score"], ascending=[True, False])
+        .groupby("scenario", group_keys=False)
+        .head(top_n)
+        .copy()
+    )
+    return top.sort_values("priority_score", ascending=False).reset_index(drop=True)
 
+
+def hotspot_records_from_gdf(hotspot_gdf: gpd.GeoDataFrame, limit: int = 10, scenario: str | None = None) -> list[dict]:
+    if hotspot_gdf.empty:
+        return []
+
+    filtered = hotspot_gdf
+    if scenario:
+        filtered = filtered[filtered["scenario"] == scenario].copy()
+    if filtered.empty:
+        return []
+
+    filtered = filtered.sort_values("priority_score", ascending=False).head(limit).copy()
+    return filtered.drop(columns=["geometry"]).to_dict(orient="records")
+
+
+def ensure_hotspots_from_scenarios(
+    scenario_records: list[dict],
+    out_geojson: str,
+    out_csv: str,
+    top_n: int = 20,
+) -> gpd.GeoDataFrame:
     out_geo = Path(out_geojson)
-    out_geo.parent.mkdir(parents=True, exist_ok=True)
-    gdf_out.to_file(out_geo, driver="GeoJSON")
+    out_csv_path = Path(out_csv)
+    source_paths = [Path(rec["geojson"]) for rec in scenario_records if rec.get("geojson") and Path(rec["geojson"]).exists()]
+    latest_source_mtime = max((path.stat().st_mtime for path in source_paths), default=0.0)
 
+    if out_geo.exists() and out_csv_path.exists():
+        hotspot_mtime = min(out_geo.stat().st_mtime, out_csv_path.stat().st_mtime)
+        if hotspot_mtime >= latest_source_mtime:
+            cached = gpd.read_file(out_geo)
+            expected_scenarios = {rec.get("scenario") for rec in scenario_records if rec.get("scenario")}
+            cached_scenarios = set(cached["scenario"].unique()) if not cached.empty and "scenario" in cached.columns else set()
+            required_columns = {"scenario", "rank", "priority_score", "centroid_lon", "centroid_lat", "area_m2"}
+            if (
+                not cached.empty
+                and expected_scenarios.issubset(cached_scenarios)
+                and required_columns.issubset(set(cached.columns))
+            ):
+                return cached
+
+    hotspot_gdf = rank_hotspots_from_scenarios(scenario_records, top_n=top_n)
+    out_geo.parent.mkdir(parents=True, exist_ok=True)
+    hotspot_gdf.to_file(out_geo, driver="GeoJSON")
+    out_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    hotspot_gdf.drop(columns=["geometry"]).to_csv(out_csv_path, index=False)
+    return hotspot_gdf
+
+
+def build_hotspots_from_scenarios(
+    scenario_records: list[dict],
+    out_geojson: str,
+    out_csv: str,
+    top_n: int = 20,
+) -> dict:
+    gdf_out = ensure_hotspots_from_scenarios(
+        scenario_records=scenario_records,
+        out_geojson=out_geojson,
+        out_csv=out_csv,
+        top_n=top_n,
+    )
+    out_geo = Path(out_geojson)
     out_table = Path(out_csv)
-    out_table.parent.mkdir(parents=True, exist_ok=True)
-    top_df.drop(columns=["geometry"]).to_csv(out_table, index=False)
 
     return {
         "count": int(len(gdf_out)),

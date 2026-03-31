@@ -186,6 +186,13 @@ def selected_operational_summary(payload: dict, scenario: str) -> dict | None:
     return payload.get("operational_summary")
 
 
+def selected_impact_summary(payload: dict, scenario: str) -> dict | None:
+    summaries = payload.get("impact_summaries") or {}
+    if scenario in summaries:
+        return summaries[scenario]
+    return payload.get("impact_summary")
+
+
 st.set_page_config(page_title="Coastal Flood Risk", layout="wide")
 
 st.markdown(
@@ -422,6 +429,23 @@ with top_left:
             file_name=f"{loaded_view['spotlight_city']}_{spotlight_summary.get('scenario_basis') or 'briefing'}_briefing.md",
             mime="text/markdown",
         )
+
+    spotlight_impact = selected_impact_summary(spotlight, loaded_view["scenario"])
+    if spotlight_impact:
+        st.markdown("#### Priority Hotspots")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Hotspots Ranked", f"{int(spotlight_impact.get('hotspot_count', 0))}")
+        c2.metric(
+            "Largest Hotspot",
+            "n/a" if spotlight_impact.get("largest_hotspot_area_m2") is None else f"{float(spotlight_impact['largest_hotspot_area_m2']):,.0f} m2",
+        )
+        c3.metric("Exposure Layers", f"{int(spotlight_impact.get('exposure_layers_available', 0))}")
+        for hotspot in spotlight_impact.get("top_hotspots", [])[:3]:
+            st.markdown(
+                f"- **Rank {int(hotspot['rank'])}** | {str(hotspot['risk_level']).upper()} | "
+                f"score {float(hotspot['priority_score']):.1f} | "
+                f"{float(hotspot['area_m2']):,.0f} m2"
+            )
 
     forecast_points = spotlight.get("forecast", [])
     if forecast_points:

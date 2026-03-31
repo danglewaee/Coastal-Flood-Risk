@@ -126,6 +126,13 @@ def selected_operational_summary(payload: dict, scenario: str) -> dict | None:
     return payload.get("operational_summary")
 
 
+def selected_impact_summary(payload: dict, scenario: str) -> dict | None:
+    summaries = payload.get("impact_summaries") or {}
+    if scenario in summaries:
+        return summaries[scenario]
+    return payload.get("impact_summary")
+
+
 def render_operational_summary(payload: dict, scenario: str, city_cfg: dict):
     summary = selected_operational_summary(payload, scenario)
     if not summary:
@@ -163,10 +170,44 @@ def render_operational_summary(payload: dict, scenario: str, city_cfg: dict):
     )
 
 
+def render_impact_summary(payload: dict, scenario: str):
+    impact = selected_impact_summary(payload, scenario)
+    if not impact:
+        return
+
+    st.subheader("Priority Hotspots")
+    metrics = st.columns(4)
+    metrics[0].metric("Hotspots Ranked", f"{int(impact.get('hotspot_count', 0))}")
+    metrics[1].metric(
+        "Largest Hotspot",
+        "n/a" if impact.get("largest_hotspot_area_m2") is None else f"{float(impact['largest_hotspot_area_m2']):,.0f} m2",
+    )
+    metrics[2].metric(
+        "Top-3 Hotspot Area",
+        "n/a" if impact.get("top3_hotspot_area_m2") is None else f"{float(impact['top3_hotspot_area_m2']):,.0f} m2",
+    )
+    metrics[3].metric("Exposure Layers", f"{int(impact.get('exposure_layers_available', 0))}")
+
+    hotspots = impact.get("top_hotspots", [])
+    if hotspots:
+        hotspot_df = pd.DataFrame(hotspots)[
+            ["rank", "scenario", "risk_level", "priority_score", "area_m2", "centroid_lat", "centroid_lon"]
+        ].copy()
+        hotspot_df["priority_score"] = hotspot_df["priority_score"].map(lambda v: round(float(v), 1))
+        hotspot_df["area_m2"] = hotspot_df["area_m2"].map(lambda v: round(float(v), 1))
+        st.dataframe(hotspot_df, use_container_width=True, hide_index=True)
+
+    exposure_rows = impact.get("exposure_summary", [])
+    if exposure_rows:
+        st.markdown("**Exposure Summary**")
+        st.dataframe(pd.DataFrame(exposure_rows), use_container_width=True, hide_index=True)
+
+
 def render_single_city(payload: dict, api_base: str, city: str, horizon: int, hours_back: int, scenario: str, show_all: bool, map_mode: str, camera_preset: str, downsample: int, zex: float):
     render_header(payload)
     city_cfg = registry.get(city, {})
     render_operational_summary(payload, scenario=scenario, city_cfg=city_cfg)
+    render_impact_summary(payload, scenario=scenario)
 
     scenarios = payload.get("scenarios", [])
     items = scenario_items_from_payload(payload, selected_scenario=scenario, show_all=show_all)
@@ -313,6 +354,15 @@ def render_compare(payloads: list[dict], selected_scenario: str):
             st.caption(summary.get("summary_text", ""))
             for item in summary.get("recommended_actions", []):
                 st.markdown(f"- {item}")
+            impact = selected_impact_summary(payload, selected_scenario)
+            if impact and impact.get("top_hotspots"):
+                st.markdown("**Top Hotspots**")
+                for hotspot in impact["top_hotspots"][:3]:
+                    st.markdown(
+                        f"- Rank {int(hotspot['rank'])}: {hotspot['risk_level']} | "
+                        f"score {float(hotspot['priority_score']):.1f} | "
+                        f"{float(hotspot['area_m2']):,.0f} m2"
+                    )
 
 
 st.set_page_config(page_title="Coastal Flood Risk", layout="wide")

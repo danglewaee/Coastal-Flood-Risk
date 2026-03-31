@@ -98,6 +98,7 @@ Dashboard features:
 - choose a coastal city
 - fetch provider-aware realtime data
 - render operational summary, alert level, and recommended actions for the selected scenario
+- render prioritized flood hotspots and scenario-level impact summaries
 - render a practical 2D flood polygon map on a real basemap
 - render forecast line
 - render 3D flood map for `+20cm / +50cm / +100cm`
@@ -124,6 +125,7 @@ powershell -ExecutionPolicy Bypass -File Backend/sea_level_risk/stop_presentatio
 Presentation app layout:
 - city spotlight
 - operational summary with alert/confidence and downloadable briefing
+- prioritized hotspot summary for the selected scenario
 - 2D flood map on a basemap
 - forecast trajectory
 - cross-city compare table
@@ -135,7 +137,23 @@ Presentation app layout:
 - Flood scenarios are built from `0 < DEM <= scenario_water_level`.
 - Only coast-connected components are kept.
 - Small polygons are filtered, then geometries are cleaned before exporting GeoJSON/GPKG.
+- Hotspots are ranked across scenario polygons using a weighted score based on scenario severity, city-level flood ratio, and polygon area.
 - For steep locations like Honolulu, `+50 cm` and even `+1 m` can still appear as narrow coastal strips. That is expected for a simple DEM-threshold workflow.
+
+## Optional exposure layers
+If you have local GIS layers such as roads, hospitals, substations, or population polygons, you can register them to attach simple impact intersections to each scenario summary.
+
+1. Copy:
+   - `Backend/sea_level_risk/exposure_registry.example.json`
+   to:
+   - `Backend/sea_level_risk/exposure_registry.json`
+2. Replace the sample paths with your own local vector layers.
+3. Restart the API. Scenario payloads will include `impact_summaries[*].exposure_summary` for any registered layer that exists on disk.
+
+The current implementation is intentionally simple:
+- it computes scenario-layer intersections
+- it reports affected area and intersection count
+- it does not yet perform network analysis or population-weighted impact estimation
 
 ## Hydrodynamic integration (Boston PoC)
 If you run a 2D hydrodynamic model (e.g., HEC-RAS 2D) and export a depth grid GeoTIFF,

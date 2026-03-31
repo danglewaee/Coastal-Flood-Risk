@@ -19,9 +19,10 @@ from .forecast import recursive_forecast_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_from_frame
 from .gis import dem_to_flood_polygon
 from .hydro import load_hydro_override
+from .impact import build_impact_summaries
 from .model_registry import DEFAULT_MODELS_ROOT, resolve_city_model
 from .operational_summary import build_briefing_markdown, build_operational_summary
-from .priority import build_hotspots_from_scenarios
+from .priority import ensure_hotspots_from_scenarios, hotspot_records_from_gdf
 
 
 DEFAULT_SCENARIOS_M = [0.2, 0.5, 1.0]
@@ -343,6 +344,7 @@ class RealtimeService:
 
         if dem_path_resolved and Path(dem_path_resolved).exists():
             scenarios = []
+            out_dir = None
             city_part = city_key if city_key else _slugify_station_ref(cfg.get("provider", "unknown"), fetch_meta["station_ref"])
             out_dir = Path(f"Backend/sea_level_risk/outputs/realtime/{city_part}")
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -423,6 +425,18 @@ class RealtimeService:
                     }
                 )
             payload["scenarios"] = scenarios
+            hotspot_geojson = out_dir / "hotspots.geojson"
+            hotspot_csv = out_dir / "hotspots.csv"
+            impact_summaries = build_impact_summaries(
+                payload=payload,
+                city_key=city_key,
+                hotspot_geojson=str(hotspot_geojson),
+                hotspot_csv=str(hotspot_csv),
+            )
+            if impact_summaries:
+                payload["impact_summaries"] = impact_summaries
+                default_impact_basis = "plus_50cm" if "plus_50cm" in impact_summaries else next(iter(impact_summaries))
+                payload["impact_summary"] = impact_summaries[default_impact_basis]
 
         if payload.get("scenarios"):
             payload["operational_summaries"] = {
@@ -454,6 +468,7 @@ class RealtimeService:
         hotspot_geojson = out_dir / "hotspots.geojson"
         hotspot_csv = out_dir / "hotspots.csv"
 
+        hotspot_gdf = None
         if not hotspot_geojson.exists():
             pred = self.predict(
                 city=city_key,
@@ -468,7 +483,7 @@ class RealtimeService:
             )
             scenarios = pred.get("scenarios", [])
             if scenarios:
-                build_hotspots_from_scenarios(
+                hotspot_gdf = ensure_hotspots_from_scenarios(
                     scenario_records=scenarios,
                     out_geojson=str(hotspot_geojson),
                     out_csv=str(hotspot_csv),
@@ -476,12 +491,11 @@ class RealtimeService:
                 )
 
         if hotspot_geojson.exists():
-            data = gpd.read_file(hotspot_geojson)
+            data = hotspot_gdf if hotspot_gdf is not None else gpd.read_file(hotspot_geojson)
             if data.empty:
                 return {"city": city_key, "station": station_ref, "source": "hotspots.geojson", "count": 0, "hotspots": []}
 
-            data = data.sort_values("priority_score", ascending=False).head(limit)
-            records = data.drop(columns=["geometry"]).to_dict(orient="records")
+            records = hotspot_records_from_gdf(data, limit=limit)
             return {
                 "city": city_key,
                 "station": station_ref,
