@@ -24,7 +24,8 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
   --city boston \
   --begin 20100101 \
   --end 20251231 \
-  --model-type axial_lstm
+  --model-type axial_lstm \
+  --feature-mode multivariate_v1
 ```
 
 New York example:
@@ -33,7 +34,8 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
   --city newyork \
   --begin 20100101 \
   --end 20251231 \
-  --model-type axial_lstm
+  --model-type axial_lstm \
+  --feature-mode multivariate_v1
 ```
 
 If a city does not have automatic hourly history download implemented, provide your own hourly CSV:
@@ -43,12 +45,16 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
   --csv data/jakarta_hourly.csv \
   --time-col timestamp \
   --value-col sea_level \
-  --model-type axial_lstm
+  --model-type axial_lstm \
+  --feature-mode multivariate_v1
 ```
 
 Important:
 - The local files `data/boston.csv`, `data/newyork.csv`, `data/jakarta.csv`, and `data/amsterdam.csv` are coarse monthly trend series, not hourly gauge histories. Do not use them for the current short-horizon forecast task.
 - The realtime API will automatically prefer `Backend/sea_level_risk/outputs/models/<city>/` when a city-specific model exists. Otherwise it falls back to the tide-aware baseline.
+- `multivariate_v1` uses derived sequence features from the hourly water-level signal: level, first-difference, rolling statistics, hour-of-day cycle, and semidiurnal tidal cycle encodings.
+- Trained models now store validation-residual uncertainty calibration so the API can return `P10 / P50 / P90` forecast bands.
+- Legacy city models remain usable. They will report `feature_mode = univariate_v0` until they are retrained with `--feature-mode multivariate_v1`.
 
 ## Realtime API (multi-city, provider-aware)
 ```powershell
@@ -76,6 +82,8 @@ Notes:
 - `honolulu` uses the trained deep-learning model.
 - Any city with a trained model under `Backend/sea_level_risk/outputs/models/<city>/` will use that model automatically.
 - Cities without a city-specific model fall back to the tide-aware baseline.
+- `forecast_values_m` now represents the calibrated `P50` trajectory.
+- `forecast_quantiles` and `forecast[*].p10_m / p50_m / p90_m` expose probabilistic outputs.
 - NOAA realtime fetch uses `water_level`, not `hourly_height`.
 - IOC realtime fetch parses the public HTML table feed and resamples it to hourly series.
 - `amsterdam` is implemented as `Amsterdam-region proxy (Hoek van Holland)`. Treat it as delayed regional proxy mode, not a direct Amsterdam city gauge.
@@ -100,7 +108,7 @@ Dashboard features:
 - render operational summary, alert level, and recommended actions for the selected scenario
 - render prioritized flood hotspots and scenario-level impact summaries
 - render a practical 2D flood polygon map on a real basemap
-- render forecast line
+- render `P10 / P50 / P90` forecast trajectories when probabilistic outputs are available
 - render 3D flood map for `+20cm / +50cm / +100cm`
 - show provider, support tier, forecast mode, and delay notes
 - download a city/scenario operational briefing as Markdown

@@ -16,6 +16,8 @@ class TrainConfig:
     peak_quantile: float = 0.9
     peak_weight_alpha: float = 3.0
     peak_weight_temperature: float = 0.35
+    feature_mode: str = "multivariate_v1"
+    uncertainty_horizon_scale_power: float = 0.5
 
 
 @dataclass(frozen=True)

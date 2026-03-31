@@ -80,7 +80,7 @@ def _prepare_training_csv(
         begin_date=begin_date,
         end_date=end_date,
         out_csv=str(out_csv),
-        product="hourly_height",
+        product="water_level",
         datum=datum,
     )
     validation = _validate_hourly_series(str(out_csv), time_col=time_col, value_col=value_col)
@@ -107,6 +107,7 @@ def train_city_model(
     epochs: int | None = None,
     batch_size: int | None = None,
     lookback_hours: int | None = None,
+    feature_mode: str | None = None,
     reuse_model: bool = False,
 ) -> dict:
     registry = load_city_registry()
@@ -134,6 +135,8 @@ def train_city_model(
         cfg = replace(cfg, batch_size=int(batch_size))
     if lookback_hours is not None:
         cfg = replace(cfg, lookback_hours=int(lookback_hours))
+    if feature_mode is not None:
+        cfg = replace(cfg, feature_mode=str(feature_mode))
 
     model_path = output_dir / f"sea_level_{model_type}.keras"
     metadata_path = output_dir / "metadata.json"
@@ -211,6 +214,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lookback-hours", type=int, default=None)
+    parser.add_argument("--feature-mode", default="multivariate_v1", choices=["univariate_v0", "multivariate_v1"])
     parser.add_argument("--reuse-model", action="store_true")
     args = parser.parse_args()
 
@@ -227,6 +231,7 @@ def main():
         epochs=args.epochs,
         batch_size=args.batch_size,
         lookback_hours=args.lookback_hours,
+        feature_mode=args.feature_mode,
         reuse_model=args.reuse_model,
     )
     print(result)

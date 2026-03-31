@@ -39,16 +39,28 @@ def invert_zscore(values: np.ndarray, mean: float, std: float) -> np.ndarray:
     return values * std + mean
 
 
-def create_supervised_sequences(series: np.ndarray, lookback: int) -> Tuple[np.ndarray, np.ndarray]:
-    if len(series) <= lookback:
-        raise ValueError(f"Not enough rows: need > {lookback}, got {len(series)}")
+def create_supervised_sequences(
+    series: np.ndarray,
+    lookback: int,
+    targets: np.ndarray | None = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    features = np.asarray(series, dtype=np.float32)
+    if features.ndim == 1:
+        features = features.reshape(-1, 1)
+
+    if features.shape[0] <= lookback:
+        raise ValueError(f"Not enough rows: need > {lookback}, got {features.shape[0]}")
+
+    target_arr = np.asarray(targets, dtype=np.float32).reshape(-1) if targets is not None else features[:, 0]
+    if target_arr.shape[0] != features.shape[0]:
+        raise ValueError("Feature rows and target rows must match.")
 
     x_data, y_data = [], []
-    for i in range(len(series) - lookback):
-        x_data.append(series[i : i + lookback])
-        y_data.append(series[i + lookback])
+    for i in range(features.shape[0] - lookback):
+        x_data.append(features[i : i + lookback])
+        y_data.append(target_arr[i + lookback])
 
-    x_arr = np.array(x_data, dtype=np.float32).reshape(-1, lookback, 1)
+    x_arr = np.array(x_data, dtype=np.float32)
     y_arr = np.array(y_data, dtype=np.float32).reshape(-1, 1)
     return x_arr, y_arr
 

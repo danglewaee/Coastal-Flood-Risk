@@ -15,8 +15,8 @@ from tensorflow.keras.models import load_model
 from .city_registry import load_city_registry
 from .data_providers import ensure_hours_back_coverage, fetch_ioc_recent, fetch_noaa_recent
 from .dem_provider import cached_dem_for_lat_lon, ensure_dem_for_lat_lon, ensure_dem_for_station
-from .forecast import recursive_forecast_with_loaded_model
-from .forecast_baselines import tide_persistence_forecast_from_frame
+from .forecast import recursive_forecast_bundle_with_loaded_model
+from .forecast_baselines import tide_persistence_forecast_bundle_from_frame
 from .gis import dem_to_flood_polygon
 from .hydro import load_hydro_override
 from .impact import build_impact_summaries
@@ -222,39 +222,46 @@ class RealtimeService:
         df: pd.DataFrame,
         horizon: int,
         city_key: str | None = None,
-    ) -> tuple[np.ndarray, str, str | None, dict | None]:
+    ) -> tuple[dict, str, str | None, dict | None]:
         requested_mode = cfg.get("forecast_mode", "tide_persistence")
         recent = df["sea_level"].to_numpy(dtype=np.float32)
+        recent_timestamps = df["timestamp"].tolist() if "timestamp" in df.columns else None
         city_bundle = self._load_city_model_bundle(city_key)
 
         if city_bundle is not None:
             city_model, city_metadata, city_spec = city_bundle
-            preds = recursive_forecast_with_loaded_model(
+            forecast_bundle = recursive_forecast_bundle_with_loaded_model(
                 model=city_model,
                 metadata=city_metadata,
                 recent_values=recent,
                 horizon_hours=horizon,
+                recent_timestamps=recent_timestamps,
             )
-            return preds, "model_recursive", None, {
+            return forecast_bundle, "model_recursive", None, {
                 **city_spec,
                 "lookback_hours": int(city_metadata.get("lookback_hours", 24)),
                 "model_type": city_metadata.get("model_type") or city_spec.get("model_type"),
+                "feature_mode": city_metadata.get("feature_mode", "univariate_v0"),
+                "feature_names": city_metadata.get("feature_names", ["sea_level_z"]),
             }
 
         if requested_mode == "model_recursive" and self.model is not None and self.metadata:
-            preds = recursive_forecast_with_loaded_model(
+            forecast_bundle = recursive_forecast_bundle_with_loaded_model(
                 model=self.model,
                 metadata=self.metadata,
                 recent_values=recent,
                 horizon_hours=horizon,
+                recent_timestamps=recent_timestamps,
             )
-            return preds, "model_recursive", None, {
+            return forecast_bundle, "model_recursive", None, {
                 "city": city_key,
                 "model_path": self.global_model_path,
                 "metadata_path": self.global_metadata_path,
                 "model_type": self.metadata.get("model_type"),
                 "model_dir": str(Path(self.global_model_path).parent),
                 "lookback_hours": int(self.metadata.get("lookback_hours", 24)),
+                "feature_mode": self.metadata.get("feature_mode", "univariate_v0"),
+                "feature_names": self.metadata.get("feature_names", ["sea_level_z"]),
             }
 
         note = None
@@ -265,8 +272,8 @@ class RealtimeService:
         elif requested_mode == "city_model_or_baseline":
             note = "No city-specific deep-learning model is available yet for this city. Using tide-aware baseline."
             mode_used = "tide_persistence_fallback"
-        preds = tide_persistence_forecast_from_frame(df, horizon_hours=horizon)
-        return preds, mode_used, note, None
+        forecast_bundle = tide_persistence_forecast_bundle_from_frame(df, horizon_hours=horizon)
+        return forecast_bundle, mode_used, note, None
 
     def predict(
         self,
@@ -289,14 +296,25 @@ class RealtimeService:
             datum=datum,
         )
 
-        preds, forecast_mode_used, forecast_note, model_spec = self._forecast(cfg=cfg, df=df, horizon=horizon, city_key=city_key)
+        forecast_bundle, forecast_mode_used, forecast_note, model_spec = self._forecast(cfg=cfg, df=df, horizon=horizon, city_key=city_key)
+        p10 = np.asarray(forecast_bundle["p10_m"], dtype=np.float32)
+        p50 = np.asarray(forecast_bundle["p50_m"], dtype=np.float32)
+        p90 = np.asarray(forecast_bundle["p90_m"], dtype=np.float32)
+        preds = p50
         dem_path_resolved = self._resolve_dem_path(cfg=cfg, dem_path=dem_path, auto_dem=auto_dem)
 
         last_obs_ts = pd.Timestamp(df["timestamp"].iloc[-1])
         forecast_timestamps = [last_obs_ts + pd.Timedelta(hours=i) for i in range(1, horizon + 1)]
         forecast_points = [
-            {"timestamp_utc": ts.isoformat(), "sea_level_m": float(val), "hour_ahead": i}
-            for i, (ts, val) in enumerate(zip(forecast_timestamps, preds.tolist()), start=1)
+            {
+                "timestamp_utc": ts.isoformat(),
+                "sea_level_m": float(mid),
+                "p10_m": float(low),
+                "p50_m": float(mid),
+                "p90_m": float(high),
+                "hour_ahead": i,
+            }
+            for i, (ts, low, mid, high) in enumerate(zip(forecast_timestamps, p10.tolist(), p50.tolist(), p90.tolist()), start=1)
         ]
 
         peak = float(np.max(preds))
@@ -323,6 +341,9 @@ class RealtimeService:
                 "model_path": (model_spec or {}).get("model_path"),
                 "metadata_path": (model_spec or {}).get("metadata_path"),
                 "city_model_active": model_spec is not None,
+                "feature_mode": (model_spec or {}).get("feature_mode", forecast_bundle.get("feature_mode")),
+                "feature_names": (model_spec or {}).get("feature_names"),
+                "uncertainty": forecast_bundle.get("uncertainty"),
             },
             "source": {
                 "status": fetch_meta.get("status", "ok"),
@@ -338,6 +359,16 @@ class RealtimeService:
             "horizon_hours": horizon,
             "forecast_values_m": [float(v) for v in preds.tolist()],
             "forecast": forecast_points,
+            "forecast_quantiles": [
+                {
+                    "timestamp_utc": ts.isoformat(),
+                    "hour_ahead": i,
+                    "p10_m": float(low),
+                    "p50_m": float(mid),
+                    "p90_m": float(high),
+                }
+                for i, (ts, low, mid, high) in enumerate(zip(forecast_timestamps, p10.tolist(), p50.tolist(), p90.tolist()), start=1)
+            ],
             "peak_prediction_m": peak,
             "dem_path": dem_path_resolved,
         }

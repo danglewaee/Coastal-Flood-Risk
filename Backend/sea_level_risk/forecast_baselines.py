@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .uncertainty import calibrated_quantile_forecast
+
 
 def tide_persistence_forecast_from_frame(df: pd.DataFrame, horizon_hours: int) -> np.ndarray:
     if df.empty:
@@ -40,3 +42,16 @@ def tide_persistence_forecast_from_frame(df: pd.DataFrame, horizon_hours: int) -
 
     return np.array(preds, dtype=np.float32)
 
+
+def tide_persistence_forecast_bundle_from_frame(df: pd.DataFrame, horizon_hours: int) -> dict:
+    point_forecast = tide_persistence_forecast_from_frame(df, horizon_hours=horizon_hours)
+    recent = df["sea_level"].to_numpy(dtype=np.float32)
+    quantiles = calibrated_quantile_forecast(point_forecast, recent_values=recent, calibration=None)
+    return {
+        "point_forecast_m": point_forecast,
+        "p10_m": quantiles["p10"],
+        "p50_m": quantiles["p50"],
+        "p90_m": quantiles["p90"],
+        "uncertainty": quantiles["calibration"],
+        "feature_mode": "baseline_tide_persistence",
+    }

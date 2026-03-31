@@ -105,6 +105,7 @@ def render_header(payload: dict):
         f"Provider: {payload.get('provider_label', 'n/a')} | "
         f"Support: {payload.get('support_tier', 'n/a')} | "
         f"Forecast: {model_meta.get('forecast_mode_used', 'n/a')} | "
+        f"Features: {model_meta.get('feature_mode', 'n/a')} | "
         f"Obs used: {history.get('observations_used', 'n/a')}"
     )
     if payload.get("city_notes"):
@@ -259,10 +260,18 @@ def render_single_city(payload: dict, api_base: str, city: str, horizon: int, ho
     elif map_mode in {"3D terrain map", "Both"}:
         st.warning("DEM or scenarios missing for this city.")
 
-    forecast = payload.get("forecast_values_m", [])
-    if forecast:
-        st.subheader("Forecast")
-        st.line_chart(pd.DataFrame({"hour_ahead": list(range(1, len(forecast) + 1)), "sea_level_m": forecast}), x="hour_ahead", y="sea_level_m")
+    forecast_quantiles = payload.get("forecast_quantiles", [])
+    if forecast_quantiles:
+        st.subheader("Forecast (P10 / P50 / P90)")
+        quantile_df = pd.DataFrame(forecast_quantiles)[["hour_ahead", "p10_m", "p50_m", "p90_m"]]
+        st.line_chart(quantile_df, x="hour_ahead", y=["p10_m", "p50_m", "p90_m"])
+        if payload.get("model", {}).get("uncertainty", {}).get("method"):
+            st.caption(f"Uncertainty method: {payload['model']['uncertainty']['method']}")
+    else:
+        forecast = payload.get("forecast_values_m", [])
+        if forecast:
+            st.subheader("Forecast")
+            st.line_chart(pd.DataFrame({"hour_ahead": list(range(1, len(forecast) + 1)), "sea_level_m": forecast}), x="hour_ahead", y="sea_level_m")
 
     forecast_points = payload.get("forecast", [])
     if forecast_points:

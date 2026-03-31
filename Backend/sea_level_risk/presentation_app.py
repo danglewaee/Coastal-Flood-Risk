@@ -451,7 +451,12 @@ with top_left:
     if forecast_points:
         st.markdown("#### Forecast Trajectory")
         forecast_df = pd.DataFrame(forecast_points)
-        st.line_chart(forecast_df, x="hour_ahead", y="sea_level_m")
+        if {"p10_m", "p50_m", "p90_m"}.issubset(forecast_df.columns):
+            st.line_chart(forecast_df, x="hour_ahead", y=["p10_m", "p50_m", "p90_m"])
+            if spotlight.get("model", {}).get("uncertainty", {}).get("method"):
+                st.caption(f"Uncertainty method: {spotlight['model']['uncertainty']['method']}")
+        else:
+            st.line_chart(forecast_df, x="hour_ahead", y="sea_level_m")
 
     if spotlight_scenario:
         c1, c2, c3 = st.columns(3)
@@ -518,7 +523,7 @@ st.markdown("### Method And Limits")
 st.markdown(
     """
     - Realtime water level comes from official NOAA gauges where available, and IOC public feeds where NOAA is unavailable.
-    - Forecast uses city-specific deep-learning models where hourly training histories are available; lower-data cities fall back to a tide-aware short-horizon baseline.
+    - Forecast uses city-specific deep-learning models with multivariate derived features and calibrated uncertainty bands where hourly training histories are available; lower-data cities fall back to a tide-aware short-horizon baseline.
     - Flood polygons are GIS threshold outputs on Copernicus DEM, filtered to coast-connected components.
     - `Amsterdam` is shown as a delayed regional proxy. It should not be presented as a direct Amsterdam city gauge.
     """

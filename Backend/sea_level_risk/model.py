@@ -21,6 +21,7 @@ def weighted_peak_mse(peak_threshold: float, alpha: float, temperature: float):
 
 def build_lstm_model(
     lookback: int,
+    n_features: int = 1,
     hidden_units: int = 64,
     lstm_layers: int = 2,
     dropout: float = 0.15,
@@ -35,7 +36,7 @@ def build_lstm_model(
             "activation": "tanh",
         }
         if i == 0:
-            layer_kwargs["input_shape"] = (lookback, 1)
+            layer_kwargs["input_shape"] = (lookback, n_features)
         model.add(LSTM(**layer_kwargs))
         if dropout > 0:
             model.add(Dropout(dropout))
@@ -47,11 +48,12 @@ def build_lstm_model(
 
 def build_temporal_cnn_model(
     lookback: int,
+    n_features: int = 1,
     hidden_units: int = 64,
     dropout: float = 0.15,
     learning_rate: float = 1e-3,
 ):
-    inputs = Input(shape=(lookback, 1), name="input_series")
+    inputs = Input(shape=(lookback, n_features), name="input_series")
     x = Conv1D(filters=hidden_units, kernel_size=3, padding="causal", activation="relu")(inputs)
     x = Conv1D(filters=hidden_units, kernel_size=5, padding="causal", activation="relu", dilation_rate=2)(x)
     x = Conv1D(filters=hidden_units // 2, kernel_size=3, padding="causal", activation="relu", dilation_rate=4)(x)
@@ -66,12 +68,13 @@ def build_temporal_cnn_model(
 
 def build_axial_lstm_model(
     lookback: int,
+    n_features: int = 1,
     hidden_units: int = 64,
     heads: int = 4,
     dropout: float = 0.15,
     learning_rate: float = 1e-3,
 ):
-    inputs = Input(shape=(lookback, 1), name="input_series")
+    inputs = Input(shape=(lookback, n_features), name="input_series")
     x = LSTM(hidden_units, return_sequences=True, activation="tanh")(inputs)
 
     attn_in = LayerNormalization()(x)
@@ -89,12 +92,12 @@ def build_axial_lstm_model(
     return model
 
 
-def build_model(model_type: str, lookback: int, hidden_units: int, lstm_layers: int, dropout: float, learning_rate: float):
+def build_model(model_type: str, lookback: int, hidden_units: int, lstm_layers: int, dropout: float, learning_rate: float, n_features: int = 1):
     model_key = model_type.lower().strip()
     if model_key == "lstm":
-        return build_lstm_model(lookback, hidden_units, lstm_layers, dropout, learning_rate)
+        return build_lstm_model(lookback, n_features, hidden_units, lstm_layers, dropout, learning_rate)
     if model_key == "temporal_cnn":
-        return build_temporal_cnn_model(lookback, hidden_units, dropout, learning_rate)
+        return build_temporal_cnn_model(lookback, n_features, hidden_units, dropout, learning_rate)
     if model_key == "axial_lstm":
-        return build_axial_lstm_model(lookback, hidden_units, 4, dropout, learning_rate)
+        return build_axial_lstm_model(lookback, n_features, hidden_units, 4, dropout, learning_rate)
     raise ValueError(f"Unsupported model_type: {model_type}")
