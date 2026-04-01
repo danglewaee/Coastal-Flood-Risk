@@ -201,7 +201,11 @@ def render_impact_summary(payload: dict, scenario: str):
     exposure_rows = impact.get("exposure_summary", [])
     if exposure_rows:
         st.markdown("**Exposure Summary**")
-        st.dataframe(pd.DataFrame(exposure_rows), use_container_width=True, hide_index=True)
+        exposure_df = pd.DataFrame(exposure_rows).copy()
+        for col in ["affected_area_m2", "affected_length_m"]:
+            if col in exposure_df.columns:
+                exposure_df[col] = exposure_df[col].map(lambda v: round(float(v), 1))
+        st.dataframe(exposure_df, use_container_width=True, hide_index=True)
 
 
 def render_single_city(payload: dict, api_base: str, city: str, horizon: int, hours_back: int, scenario: str, show_all: bool, map_mode: str, camera_preset: str, downsample: int, zex: float):

@@ -148,20 +148,38 @@ Presentation app layout:
 - Hotspots are ranked across scenario polygons using a weighted score based on scenario severity, city-level flood ratio, and polygon area.
 - For steep locations like Honolulu, `+50 cm` and even `+1 m` can still appear as narrow coastal strips. That is expected for a simple DEM-threshold workflow.
 
-## Optional exposure layers
-If you have local GIS layers such as roads, hospitals, substations, or population polygons, you can register them to attach simple impact intersections to each scenario summary.
+## Exposure layers (Phase 4)
+The repo now ships with a tracked exposure registry:
+- `Backend/sea_level_risk/exposure_registry.json`
 
-1. Copy:
-   - `Backend/sea_level_risk/exposure_registry.example.json`
-   to:
-   - `Backend/sea_level_risk/exposure_registry.json`
-2. Replace the sample paths with your own local vector layers.
-3. Restart the API. Scenario payloads will include `impact_summaries[*].exposure_summary` for any registered layer that exists on disk.
+Default expected local paths:
+- `data/exposure/<city>/roads.geojson`
+- `data/exposure/<city>/critical_facilities.geojson`
 
-The current implementation is intentionally simple:
-- it computes scenario-layer intersections
-- it reports affected area and intersection count
-- it does not yet perform network analysis or population-weighted impact estimation
+Download real exposure layers from OpenStreetMap Overpass:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_layers --cities boston newyork honolulu jakarta amsterdam
+```
+
+Download every city in the registry:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_layers --all-known
+```
+
+Notes:
+- The downloader creates local GeoJSON layers under `data/exposure/`.
+- Roads are exported as line features.
+- Critical facilities are exported as point features from OSM `hospital`, `clinic`, `police`, and `fire_station` tags.
+- Scenario payloads now include `impact_summaries[*].exposure_summary` for any registered layer present on disk.
+- Exposure summaries report intersections plus geometry-aware metrics:
+  - polygon area in `affected_area_m2`
+  - line length in `affected_length_m`
+  - point counts in `affected_point_count`
+
+The current implementation is still intentionally pragmatic:
+- it computes direct scenario-layer intersections
+- it does not yet perform network accessibility analysis
+- it does not yet estimate exposed population or service capacity
 
 ## Hydrodynamic integration (Boston PoC)
 If you run a 2D hydrodynamic model (e.g., HEC-RAS 2D) and export a depth grid GeoTIFF,

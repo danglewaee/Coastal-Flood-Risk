@@ -1,0 +1,72 @@
+{
+  "honolulu": [
+    {
+      "name": "roads",
+      "path": "data/exposure/honolulu/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/honolulu/critical_facilities.geojson"
+    }
+  ],
+  "boston": [
+    {
+      "name": "roads",
+      "path": "data/exposure/boston/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/boston/critical_facilities.geojson"
+    }
+  ],
+  "newyork": [
+    {
+      "name": "roads",
+      "path": "data/exposure/newyork/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/newyork/critical_facilities.geojson"
+    }
+  ],
+  "jakarta": [
+    {
+      "name": "roads",
+      "path": "data/exposure/jakarta/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/jakarta/critical_facilities.geojson"
+    }
+  ],
+  "amsterdam": [
+    {
+      "name": "roads",
+      "path": "data/exposure/amsterdam/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/amsterdam/critical_facilities.geojson"
+    }
+  ],
+  "miami": [
+    {
+      "name": "roads",
+      "path": "data/exposure/miami/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/miami/critical_facilities.geojson"
+    }
+  ],
+  "sanfrancisco": [
+    {
+      "name": "roads",
+      "path": "data/exposure/sanfrancisco/roads.geojson"
+    },
+    {
+      "name": "critical_facilities",
+      "path": "data/exposure/sanfrancisco/critical_facilities.geojson"
+    }
+  ]
+}

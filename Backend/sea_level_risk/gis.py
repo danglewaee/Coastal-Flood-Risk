@@ -282,18 +282,46 @@ def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "lay
     layer = gpd.read_file(layer_path)
 
     if flood.empty or layer.empty:
-        return {"layer": layer_name, "intersections": 0, "affected_area_m2": 0.0}
+        return {
+            "layer": layer_name,
+            "intersections": 0,
+            "affected_area_m2": 0.0,
+            "affected_length_m": 0.0,
+            "affected_point_count": 0,
+        }
 
     if flood.crs != layer.crs:
         layer = layer.to_crs(flood.crs)
 
-    intersection = gpd.overlay(layer, flood, how="intersection")
-    area = float(intersection.to_crs(epsg=EQUAL_AREA_EPSG).geometry.area.sum()) if not intersection.empty else 0.0
+    intersection = gpd.overlay(layer, flood, how="intersection", keep_geom_type=False)
+    if intersection.empty:
+        return {
+            "layer": layer_name,
+            "intersections": 0,
+            "affected_area_m2": 0.0,
+            "affected_length_m": 0.0,
+            "affected_point_count": 0,
+        }
+
+    metric_gdf = intersection.to_crs(epsg=EQUAL_AREA_EPSG)
+    geom_types = metric_gdf.geometry.geom_type.str.lower()
+    polygon_mask = geom_types.isin(["polygon", "multipolygon"])
+    line_mask = geom_types.isin(["linestring", "multilinestring"])
+    point_mask = geom_types.isin(["point", "multipoint"])
+
+    area = float(metric_gdf.loc[polygon_mask, "geometry"].area.sum()) if polygon_mask.any() else 0.0
+    length = float(metric_gdf.loc[line_mask, "geometry"].length.sum()) if line_mask.any() else 0.0
+    point_count = int(point_mask.sum())
+
+    source_geom_types = sorted({str(item).lower() for item in layer.geometry.geom_type.dropna().unique().tolist()})
 
     return {
         "layer": layer_name,
         "intersections": int(len(intersection)),
         "affected_area_m2": area,
+        "affected_length_m": length,
+        "affected_point_count": point_count,
+        "source_geometry_types": source_geom_types,
     }
 
 

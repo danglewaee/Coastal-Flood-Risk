@@ -446,6 +446,14 @@ with top_left:
                 f"score {float(hotspot['priority_score']):.1f} | "
                 f"{float(hotspot['area_m2']):,.0f} m2"
             )
+        exposure_rows = spotlight_impact.get("exposure_summary", [])
+        if exposure_rows:
+            st.markdown("#### Exposure Summary")
+            exposure_df = pd.DataFrame(exposure_rows).copy()
+            for col in ["affected_area_m2", "affected_length_m"]:
+                if col in exposure_df.columns:
+                    exposure_df[col] = exposure_df[col].map(lambda v: round(float(v), 1))
+            st.dataframe(exposure_df, use_container_width=True, hide_index=True)
 
     forecast_points = spotlight.get("forecast", [])
     if forecast_points:
