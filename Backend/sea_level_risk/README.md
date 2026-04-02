@@ -88,6 +88,7 @@ Notes:
 - IOC realtime fetch parses the public HTML table feed and resamples it to hourly series.
 - `amsterdam` is implemented as `Amsterdam-region proxy (Hoek van Holland)`. Treat it as delayed regional proxy mode, not a direct Amsterdam city gauge.
 - If a city has no local DEM, `auto_dem=1` will fetch Copernicus DEM by NOAA station metadata or by city `lat/lon` from the registry.
+- When a city has `lat/lon`, the service now prefers a city-clipped DEM cache under `data/dem_city_cache/` instead of using the full 1x1 Copernicus tile for every request. This keeps map generation faster for cities such as Miami.
 
 ## Supported city modes
 - `honolulu`: official NOAA realtime + local deep model

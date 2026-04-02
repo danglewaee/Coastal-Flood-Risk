@@ -14,7 +14,13 @@ from tensorflow.keras.models import load_model
 
 from .city_registry import load_city_registry
 from .data_providers import ensure_hours_back_coverage, fetch_ioc_recent, fetch_noaa_recent
-from .dem_provider import cached_dem_for_lat_lon, ensure_dem_for_lat_lon, ensure_dem_for_station
+from .dem_provider import (
+    cached_dem_for_lat_lon,
+    city_dem_for_lat_lon_if_cached,
+    ensure_city_dem_for_lat_lon,
+    ensure_dem_for_lat_lon,
+    ensure_dem_for_station,
+)
 from .forecast import recursive_forecast_bundle_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_bundle_from_frame
 from .gis import dem_to_flood_polygon
@@ -104,15 +110,21 @@ class RealtimeService:
         }
         return None, cfg
 
-    def _resolve_dem_path(self, cfg: dict, dem_path: str | None, auto_dem: bool) -> str | None:
+    def _resolve_dem_path(self, cfg: dict, dem_path: str | None, auto_dem: bool, city_key: str | None = None) -> str | None:
         resolved_dem = dem_path or cfg.get("dem_path")
         if resolved_dem and Path(resolved_dem).exists():
             return resolved_dem
 
         lat = cfg.get("lat")
         lon = cfg.get("lon")
-        if lat is not None and lon is not None:
-            cached = cached_dem_for_lat_lon(float(lat), float(lon))
+        lat_f = float(lat) if lat is not None else None
+        lon_f = float(lon) if lon is not None else None
+        if city_key and lat_f is not None and lon_f is not None:
+            clipped = city_dem_for_lat_lon_if_cached(city_key, lat_f, lon_f)
+            if clipped:
+                return clipped
+        if lat_f is not None and lon_f is not None:
+            cached = cached_dem_for_lat_lon(lat_f, lon_f)
             if cached:
                 return cached
 
@@ -121,10 +133,15 @@ class RealtimeService:
 
         provider = cfg.get("provider")
         if provider == "noaa" and cfg.get("station_id"):
-            return ensure_dem_for_station(cfg["station_id"])
+            station_dem = ensure_dem_for_station(cfg["station_id"])
+            if city_key and lat_f is not None and lon_f is not None:
+                return ensure_city_dem_for_lat_lon(city_key, lat_f, lon_f)
+            return station_dem
 
-        if lat is not None and lon is not None:
-            return ensure_dem_for_lat_lon(float(lat), float(lon))
+        if lat_f is not None and lon_f is not None:
+            if city_key:
+                return ensure_city_dem_for_lat_lon(city_key, lat_f, lon_f)
+            return ensure_dem_for_lat_lon(lat_f, lon_f)
 
         return None
 
@@ -301,7 +318,7 @@ class RealtimeService:
         p50 = np.asarray(forecast_bundle["p50_m"], dtype=np.float32)
         p90 = np.asarray(forecast_bundle["p90_m"], dtype=np.float32)
         preds = p50
-        dem_path_resolved = self._resolve_dem_path(cfg=cfg, dem_path=dem_path, auto_dem=auto_dem)
+        dem_path_resolved = self._resolve_dem_path(cfg=cfg, dem_path=dem_path, auto_dem=auto_dem, city_key=city_key)
 
         last_obs_ts = pd.Timestamp(df["timestamp"].iloc[-1])
         forecast_timestamps = [last_obs_ts + pd.Timedelta(hours=i) for i in range(1, horizon + 1)]
