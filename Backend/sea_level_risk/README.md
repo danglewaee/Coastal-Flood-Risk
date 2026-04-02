@@ -56,6 +56,39 @@ Important:
 - Trained models now store validation-residual uncertainty calibration so the API can return `P10 / P50 / P90` forecast bands.
 - Legacy city models remain usable. They will report `feature_mode = univariate_v0` until they are retrained with `--feature-mode multivariate_v1`.
 
+## Forecast accuracy backtesting (Phase Accuracy-1)
+Run rolling-origin backtests to compare each city model against the tide-persistence baseline before retraining or adding new features.
+
+Boston example (last 30 days, 6-hour horizon, one forecast every 6 hours):
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest \
+  --cities boston \
+  --horizon 6 \
+  --step-hours 6 \
+  --eval-window-hours 720
+```
+
+All NOAA cities:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 720
+```
+
+Artifacts are written to `Backend/sea_level_risk/outputs/backtests/<city>/`:
+- `summary.json`: aggregate metrics for each forecaster
+- `horizon_metrics.csv`: metric-by-horizon table
+- `window_forecasts.csv`: every rolling forecast window, suitable for custom plotting
+
+Forecaster selection mirrors the runtime service:
+- cities with `outputs/models/<city>/` use the city-specific model
+- `honolulu` falls back to the legacy global model under `Backend/sea_level_risk/outputs/`
+- every selected city can still be benchmarked against the tide-persistence baseline
+
+Current backtest metrics include:
+- overall `MAE / RMSE / bias`
+- `high_water_mae_m` and `high_water_rmse_m` on the top-decile observed water levels
+- `peak_level_mae_m` and `peak_timing_mae_h`
+- `P10-P90` interval coverage and mean interval width
+
 ## Realtime API (multi-city, provider-aware)
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.realtime_api \

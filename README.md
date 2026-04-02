@@ -42,6 +42,14 @@ Open:
 - `GET /realtime/forecast?city=honolulu&horizon=6&hours_back=96&auto_dem=1`
 - `GET /realtime/hotspots?city=honolulu&limit=10`
 
+## Forecast accuracy backtesting
+Use the rolling backtest CLI to benchmark city models against the tide-persistence baseline:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 720
+```
+
+Outputs are written under `Backend/sea_level_risk/outputs/backtests/`.
+
 ## QGIS workflow
 1. Build package:
 ```powershell
