@@ -54,16 +54,20 @@ Important:
 - The realtime API will automatically prefer `Backend/sea_level_risk/outputs/models/<city>/` when a city-specific model exists. Otherwise it falls back to the tide-aware baseline.
 - `multivariate_v1` uses derived sequence features from the hourly water-level signal: level, first-difference, rolling statistics, hour-of-day cycle, and semidiurnal tidal cycle encodings.
 - `multivariate_v2` extends `multivariate_v1` with optional hourly exogenous drivers. The current hook supports `wind_speed`, `air_pressure`, `precipitation`, and `river_discharge` from a separate driver CSV.
+- `download_weather_drivers.py` uses the Open-Meteo Historical Weather API to build hourly driver CSVs aligned to each city's gauge-history date range. In this first `v2` prototype, `river_discharge` is zero-filled until a dedicated discharge source is integrated.
 - Trained models now store validation-residual uncertainty calibration so the API can return `P10 / P50 / P90` forecast bands.
 - Legacy city models remain usable. They will report `feature_mode = univariate_v0` until they are retrained with `--feature-mode multivariate_v1`.
 - If you train `multivariate_v2`, runtime inference stays backward-compatible: when no live driver feed is available yet, forecast rollout falls back to last-known/zero-filled driver inputs instead of failing.
 
 Example `multivariate_v2` training:
 ```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_weather_drivers \
+  --city boston \
+  --match-csv data/boston_hourly.csv
+
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
   --city boston \
-  --begin 20100101 \
-  --end 20251231 \
+  --csv data/boston_hourly.csv \
   --model-type temporal_cnn \
   --feature-mode multivariate_v2 \
   --drivers-csv data/boston_drivers_hourly.csv \

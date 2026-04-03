@@ -13,7 +13,7 @@ from .data_utils import load_metadata, load_series
 from .exogenous import align_exogenous_to_timestamps, load_exogenous_series, resolve_driver_columns
 from .forecast import recursive_forecast_bundle_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_bundle_from_frame
-from .model_registry import resolve_city_model
+from .model_registry import DEFAULT_MODELS_ROOT, resolve_city_model
 
 
 DEFAULT_BACKTEST_ROOT = Path("Backend/sea_level_risk/outputs/backtests")
@@ -39,14 +39,20 @@ def _safe_bias(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(y_pred - y_true))
 
 
-def _resolve_source_csv(city_key: str, cfg: dict, csv_path: str | None) -> tuple[Path, str]:
+def _resolve_source_csv(
+    city_key: str,
+    cfg: dict,
+    csv_path: str | None,
+    *,
+    models_root: str | Path = DEFAULT_MODELS_ROOT,
+) -> tuple[Path, str]:
     if csv_path:
         candidate = Path(csv_path)
         if not candidate.exists():
             raise FileNotFoundError(f"Backtest CSV does not exist: {candidate}")
         return candidate, "user_csv"
 
-    model_spec = resolve_city_model(city_key)
+    model_spec = resolve_city_model(city_key, models_root=models_root)
     if model_spec:
         metadata = load_metadata(Path(model_spec["metadata_path"]))
         training_source = metadata.get("training_source") or {}
@@ -67,8 +73,8 @@ def _resolve_source_csv(city_key: str, cfg: dict, csv_path: str | None) -> tuple
     )
 
 
-def _resolve_model_spec(city_key: str, cfg: dict) -> dict | None:
-    city_spec = resolve_city_model(city_key)
+def _resolve_model_spec(city_key: str, cfg: dict, *, models_root: str | Path = DEFAULT_MODELS_ROOT) -> dict | None:
+    city_spec = resolve_city_model(city_key, models_root=models_root)
     if city_spec is not None:
         return city_spec
 
@@ -376,6 +382,7 @@ def backtest_city(
     include_model: bool = True,
     high_water_quantile: float = 0.9,
     out_root: str | Path = DEFAULT_BACKTEST_ROOT,
+    models_root: str | Path = DEFAULT_MODELS_ROOT,
 ) -> dict:
     registry = load_city_registry()
     city_slug = city_key.strip().lower()
@@ -383,9 +390,9 @@ def backtest_city(
         raise ValueError(f"Unknown city '{city_slug}'.")
 
     cfg = registry[city_slug]
-    source_csv, source_mode = _resolve_source_csv(city_slug, cfg, csv_path)
+    source_csv, source_mode = _resolve_source_csv(city_slug, cfg, csv_path, models_root=models_root)
     frame = _load_hourly_frame(source_csv, time_col=time_col, value_col=value_col)
-    model_spec = _resolve_model_spec(city_slug, cfg) if include_model else None
+    model_spec = _resolve_model_spec(city_slug, cfg, models_root=models_root) if include_model else None
 
     effective_lookback = int(lookback_hours or 24)
     drivers_frame = None
@@ -534,6 +541,7 @@ def backtest_cities(
     include_model: bool,
     high_water_quantile: float,
     out_root: str | Path,
+    models_root: str | Path = DEFAULT_MODELS_ROOT,
 ) -> dict:
     payloads = []
     for city in cities:
@@ -556,6 +564,7 @@ def backtest_cities(
                 include_model=include_model,
                 high_water_quantile=high_water_quantile,
                 out_root=out_root,
+                models_root=models_root,
             )
         )
 
@@ -590,6 +599,7 @@ def main():
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--skip-model", action="store_true")
     parser.add_argument("--out-root", default=str(DEFAULT_BACKTEST_ROOT))
+    parser.add_argument("--models-root", default=str(DEFAULT_MODELS_ROOT))
     args = parser.parse_args()
 
     registry = load_city_registry()
@@ -620,6 +630,7 @@ def main():
         include_model=not args.skip_model,
         high_water_quantile=args.high_water_quantile,
         out_root=args.out_root,
+        models_root=args.models_root,
     )
     print(json.dumps(result, indent=2))
 

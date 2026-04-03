@@ -57,6 +57,7 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.recalibrate_uncertaint
 
 To train or backtest the new `multivariate_v2` path with hourly exogenous drivers, pass a separate driver CSV:
 ```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_weather_drivers --city boston --match-csv data/boston_hourly.csv
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model --city boston --model-type temporal_cnn --feature-mode multivariate_v2 --drivers-csv data/boston_drivers_hourly.csv --drivers-time-col timestamp --driver-cols wind_speed,air_pressure,precipitation,river_discharge
 ```
 

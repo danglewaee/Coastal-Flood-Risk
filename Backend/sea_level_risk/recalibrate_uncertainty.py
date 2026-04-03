@@ -9,7 +9,7 @@ import pandas as pd
 
 from .backtest import backtest_city
 from .city_registry import load_city_registry
-from .model_registry import resolve_city_model
+from .model_registry import DEFAULT_MODELS_ROOT, resolve_city_model
 from .uncertainty import build_horizon_quantile_calibration
 
 
@@ -17,8 +17,8 @@ DEFAULT_RECALIBRATION_ROOT = Path("Backend/sea_level_risk/outputs/recalibration_
 DEFAULT_GLOBAL_METADATA_PATH = Path("Backend/sea_level_risk/outputs/metadata.json")
 
 
-def _resolve_metadata_path(city_key: str, cfg: dict) -> Path:
-    city_spec = resolve_city_model(city_key)
+def _resolve_metadata_path(city_key: str, cfg: dict, *, models_root: str | Path = DEFAULT_MODELS_ROOT) -> Path:
+    city_spec = resolve_city_model(city_key, models_root=models_root)
     if city_spec is not None:
         return Path(city_spec["metadata_path"])
 
@@ -41,6 +41,7 @@ def recalibrate_city_uncertainty(
     lookback_hours: int | None = None,
     central_interval_coverage: float = 0.80,
     out_root: str | Path = DEFAULT_RECALIBRATION_ROOT,
+    models_root: str | Path = DEFAULT_MODELS_ROOT,
 ) -> dict:
     registry = load_city_registry()
     city_slug = city_key.strip().lower()
@@ -61,6 +62,7 @@ def recalibrate_city_uncertainty(
         include_model=True,
         high_water_quantile=0.9,
         out_root=out_root,
+        models_root=models_root,
     )
 
     records_path = Path(city_payload["artifacts"]["window_forecasts_csv"])
@@ -74,7 +76,7 @@ def recalibrate_city_uncertainty(
         central_interval_coverage=central_interval_coverage,
     )
 
-    metadata_path = _resolve_metadata_path(city_slug, registry[city_slug])
+    metadata_path = _resolve_metadata_path(city_slug, registry[city_slug], models_root=models_root)
     metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
     metadata["uncertainty"] = calibration
     metadata["uncertainty_recalibrated_at_utc"] = datetime.now(timezone.utc).isoformat()
@@ -114,6 +116,7 @@ def main():
     parser.add_argument("--lookback-hours", type=int, default=None)
     parser.add_argument("--coverage-target", type=float, default=0.80)
     parser.add_argument("--out-root", default=str(DEFAULT_RECALIBRATION_ROOT))
+    parser.add_argument("--models-root", default=str(DEFAULT_MODELS_ROOT))
     args = parser.parse_args()
 
     registry = load_city_registry()
@@ -142,6 +145,7 @@ def main():
                 lookback_hours=args.lookback_hours,
                 central_interval_coverage=args.coverage_target,
                 out_root=args.out_root,
+                models_root=args.models_root,
             )
         )
 
