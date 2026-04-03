@@ -53,8 +53,23 @@ Important:
 - The local files `data/boston.csv`, `data/newyork.csv`, `data/jakarta.csv`, and `data/amsterdam.csv` are coarse monthly trend series, not hourly gauge histories. Do not use them for the current short-horizon forecast task.
 - The realtime API will automatically prefer `Backend/sea_level_risk/outputs/models/<city>/` when a city-specific model exists. Otherwise it falls back to the tide-aware baseline.
 - `multivariate_v1` uses derived sequence features from the hourly water-level signal: level, first-difference, rolling statistics, hour-of-day cycle, and semidiurnal tidal cycle encodings.
+- `multivariate_v2` extends `multivariate_v1` with optional hourly exogenous drivers. The current hook supports `wind_speed`, `air_pressure`, `precipitation`, and `river_discharge` from a separate driver CSV.
 - Trained models now store validation-residual uncertainty calibration so the API can return `P10 / P50 / P90` forecast bands.
 - Legacy city models remain usable. They will report `feature_mode = univariate_v0` until they are retrained with `--feature-mode multivariate_v1`.
+- If you train `multivariate_v2`, runtime inference stays backward-compatible: when no live driver feed is available yet, forecast rollout falls back to last-known/zero-filled driver inputs instead of failing.
+
+Example `multivariate_v2` training:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model \
+  --city boston \
+  --begin 20100101 \
+  --end 20251231 \
+  --model-type temporal_cnn \
+  --feature-mode multivariate_v2 \
+  --drivers-csv data/boston_drivers_hourly.csv \
+  --drivers-time-col timestamp \
+  --driver-cols wind_speed,air_pressure,precipitation,river_discharge
+```
 
 ## Forecast accuracy backtesting (Phase Accuracy-1)
 Run rolling-origin backtests to compare each city model against the tide-persistence baseline before retraining or adding new features.
@@ -71,6 +86,11 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest \
 All NOAA cities:
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 720
+```
+
+For `multivariate_v2` models, backtest against the same hourly driver CSV used for training:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest --cities boston --horizon 6 --step-hours 6 --eval-window-hours 720 --drivers-csv data/boston_drivers_hourly.csv --drivers-time-col timestamp --driver-cols wind_speed,air_pressure,precipitation,river_discharge
 ```
 
 Artifacts are written to `Backend/sea_level_risk/outputs/backtests/<city>/`:

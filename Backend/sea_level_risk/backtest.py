@@ -10,6 +10,7 @@ from tensorflow.keras.models import load_model
 
 from .city_registry import load_city_registry
 from .data_utils import load_metadata, load_series
+from .exogenous import align_exogenous_to_timestamps, load_exogenous_series, resolve_driver_columns
 from .forecast import recursive_forecast_bundle_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_bundle_from_frame
 from .model_registry import resolve_city_model
@@ -81,6 +82,36 @@ def _resolve_model_spec(city_key: str, cfg: dict) -> dict | None:
                 "model_dir": str(DEFAULT_GLOBAL_MODEL_PATH.parent),
             }
     return None
+
+
+def _resolve_exogenous_source(
+    model_spec: dict | None,
+    drivers_csv: str | None,
+) -> tuple[Path | None, str | None, list[str]]:
+    if drivers_csv:
+        candidate = Path(drivers_csv)
+        if not candidate.exists():
+            raise FileNotFoundError(f"Backtest drivers CSV does not exist: {candidate}")
+        return candidate, "user_drivers_csv", []
+
+    if model_spec is None:
+        return None, None, []
+
+    metadata = load_metadata(Path(model_spec["metadata_path"]))
+    exogenous_cfg = metadata.get("exogenous") or {}
+    if not exogenous_cfg.get("enabled"):
+        return None, None, []
+
+    source_csv = exogenous_cfg.get("source_csv")
+    if not source_csv:
+        raise FileNotFoundError(
+            f"Model for city '{model_spec.get('city', 'unknown')}' requires exogenous drivers, "
+            "but metadata does not contain a source_csv."
+        )
+    candidate = Path(source_csv)
+    if not candidate.exists():
+        raise FileNotFoundError(f"Exogenous source CSV from metadata does not exist: {candidate}")
+    return candidate, "model_exogenous_source", resolve_driver_columns(exogenous_cfg.get("driver_columns"))
 
 
 def _load_hourly_frame(csv_path: Path, time_col: str, value_col: str) -> pd.DataFrame:
@@ -278,19 +309,28 @@ def _backtest_model(
     horizon_hours: int,
     lookback_hours: int,
     model_spec: dict,
+    drivers_frame: pd.DataFrame | None = None,
+    driver_columns: list[str] | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     metadata = load_metadata(Path(model_spec["metadata_path"]))
     model = load_model(model_spec["model_path"], compile=False)
     records: list[dict] = []
+    resolved_driver_columns = list(driver_columns or [])
     for end_idx in origins:
         recent = frame.iloc[end_idx - lookback_hours + 1 : end_idx + 1].copy()
         actual = frame.iloc[end_idx + 1 : end_idx + 1 + horizon_hours].copy()
+        recent_exogenous = None
+        if drivers_frame is not None and resolved_driver_columns:
+            recent_exogenous = drivers_frame.iloc[end_idx - lookback_hours + 1 : end_idx + 1][
+                ["timestamp", *resolved_driver_columns]
+            ].copy()
         bundle = recursive_forecast_bundle_with_loaded_model(
             model=model,
             metadata=metadata,
             recent_values=recent["sea_level"].to_numpy(dtype=np.float32),
             horizon_hours=horizon_hours,
             recent_timestamps=recent["timestamp"].tolist(),
+            recent_exogenous_frame=recent_exogenous,
         )
         for step_idx in range(horizon_hours):
             records.append(
@@ -312,6 +352,8 @@ def _backtest_model(
         "feature_mode": metadata.get("feature_mode"),
         "feature_names": metadata.get("feature_names"),
         "uncertainty_method": (metadata.get("uncertainty") or {}).get("method"),
+        "exogenous_enabled": bool((metadata.get("exogenous") or {}).get("enabled")),
+        "driver_columns": (metadata.get("exogenous") or {}).get("driver_columns"),
     }
     return pd.DataFrame(records), model_info
 
@@ -326,6 +368,9 @@ def backtest_city(
     max_windows: int | None = None,
     time_col: str = "timestamp",
     value_col: str = "sea_level",
+    drivers_csv: str | None = None,
+    drivers_time_col: str = "timestamp",
+    driver_cols: str | list[str] | tuple[str, ...] | None = None,
     lookback_hours: int | None = None,
     include_baseline: bool = True,
     include_model: bool = True,
@@ -343,9 +388,30 @@ def backtest_city(
     model_spec = _resolve_model_spec(city_slug, cfg) if include_model else None
 
     effective_lookback = int(lookback_hours or 24)
+    drivers_frame = None
+    resolved_driver_columns: list[str] = []
     if model_spec:
         metadata = load_metadata(Path(model_spec["metadata_path"]))
         effective_lookback = int(metadata.get("lookback_hours", effective_lookback))
+        drivers_source_csv, drivers_source_mode, metadata_driver_columns = _resolve_exogenous_source(model_spec, drivers_csv)
+        resolved_driver_columns = resolve_driver_columns(driver_cols) if driver_cols is not None else metadata_driver_columns
+        if drivers_source_csv is not None:
+            exogenous_raw = load_exogenous_series(
+                str(drivers_source_csv),
+                time_col=drivers_time_col,
+                driver_columns=resolved_driver_columns or metadata_driver_columns,
+            )
+            drivers_frame = align_exogenous_to_timestamps(
+                frame["timestamp"],
+                exogenous_raw,
+                driver_columns=resolved_driver_columns or metadata_driver_columns,
+            )
+        else:
+            drivers_source_mode = None
+            drivers_source_csv = None
+    else:
+        drivers_source_mode = None
+        drivers_source_csv = None
 
     origins = _build_origin_indices(
         frame_len=frame.shape[0],
@@ -388,6 +454,8 @@ def backtest_city(
             horizon_hours=horizon_hours,
             lookback_hours=effective_lookback,
             model_spec=model_spec,
+            drivers_frame=drivers_frame,
+            driver_columns=resolved_driver_columns,
         )
         model_summary = _aggregate_summary(
             model_df,
@@ -402,6 +470,8 @@ def backtest_city(
             model_info=model_info,
             high_water_quantile=high_water_quantile,
         )
+        model_summary["drivers_source_csv"] = str(drivers_source_csv) if drivers_source_csv else None
+        model_summary["drivers_source_mode"] = drivers_source_mode
         all_records.append(model_df)
         model_horizon = _horizon_metrics(model_df)
         model_horizon.insert(0, "forecaster", "city_model")
@@ -456,6 +526,9 @@ def backtest_cities(
     max_windows: int | None,
     time_col: str,
     value_col: str,
+    drivers_csv: str | None,
+    drivers_time_col: str,
+    driver_cols: str | list[str] | tuple[str, ...] | None,
     lookback_hours: int | None,
     include_baseline: bool,
     include_model: bool,
@@ -475,6 +548,9 @@ def backtest_cities(
                 max_windows=max_windows,
                 time_col=time_col,
                 value_col=value_col,
+                drivers_csv=drivers_csv if len(cities) == 1 else None,
+                drivers_time_col=drivers_time_col,
+                driver_cols=driver_cols,
                 lookback_hours=lookback_hours,
                 include_baseline=include_baseline,
                 include_model=include_model,
@@ -502,6 +578,9 @@ def main():
     parser.add_argument("--csv", default=None, help="Optional CSV override for single-city backtests.")
     parser.add_argument("--time-col", default="timestamp")
     parser.add_argument("--value-col", default="sea_level")
+    parser.add_argument("--drivers-csv", default=None, help="Optional hourly exogenous driver CSV for v2 models.")
+    parser.add_argument("--drivers-time-col", default="timestamp")
+    parser.add_argument("--driver-cols", default=None, help="Comma-separated exogenous driver columns.")
     parser.add_argument("--horizon", type=int, default=6)
     parser.add_argument("--step-hours", type=int, default=6)
     parser.add_argument("--eval-window-hours", type=int, default=24 * 30)
@@ -533,6 +612,9 @@ def main():
         max_windows=args.max_windows,
         time_col=args.time_col,
         value_col=args.value_col,
+        drivers_csv=args.drivers_csv,
+        drivers_time_col=args.drivers_time_col,
+        driver_cols=args.driver_cols,
         lookback_hours=args.lookback_hours,
         include_baseline=not args.skip_baseline,
         include_model=not args.skip_model,

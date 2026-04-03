@@ -8,7 +8,8 @@ from tensorflow.keras.callbacks import EarlyStopping
 from .config import TrainConfig
 from .data_utils import create_supervised_sequences, invert_zscore, load_series, save_metadata, zscore_normalize
 from .evaluation import evaluate_peak_metrics
-from .features import FEATURE_SET_NAMES, build_feature_frame, resolve_feature_mode
+from .exogenous import load_exogenous_series, resolve_driver_columns
+from .features import build_feature_bundle, resolve_feature_mode
 from .model import build_model, weighted_peak_mse
 from .uncertainty import build_uncertainty_calibration
 
@@ -20,18 +21,34 @@ def train_model(
     output_dir: Path,
     cfg: TrainConfig,
     model_type: str = "lstm",
+    drivers_csv: str | None = None,
+    drivers_time_col: str = "timestamp",
+    driver_columns: str | list[str] | tuple[str, ...] | None = None,
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     df = load_series(csv_path=csv_path, time_col=time_col, value_col=value_col)
     values = df[value_col].to_numpy(dtype=np.float32)
     feature_mode = resolve_feature_mode(cfg.feature_mode)
+    resolved_driver_columns = resolve_driver_columns(driver_columns) if feature_mode == "multivariate_v2" else []
+
+    exogenous_frame = None
+    if feature_mode == "multivariate_v2":
+        if not drivers_csv:
+            raise ValueError("multivariate_v2 training requires --drivers-csv with hourly exogenous driver data.")
+        exogenous_frame = load_exogenous_series(
+            drivers_csv,
+            time_col=drivers_time_col,
+            driver_columns=resolved_driver_columns,
+        )
 
     norm_values, mean, std = zscore_normalize(values)
-    feature_frame = build_feature_frame(
+    feature_frame, feature_context = build_feature_bundle(
         values_normalized=norm_values,
         timestamps=df[time_col] if time_col and time_col in df.columns else None,
         feature_mode=feature_mode,
+        exogenous_frame=exogenous_frame,
+        driver_columns=resolved_driver_columns,
     )
     x_all, y_all = create_supervised_sequences(
         feature_frame.to_numpy(dtype=np.float32),
@@ -98,7 +115,15 @@ def train_model(
             "value_col": value_col,
             "time_col": time_col,
             "feature_mode": feature_mode,
-            "feature_names": FEATURE_SET_NAMES[feature_mode],
+            "feature_names": feature_context["feature_names"],
+            "exogenous": {
+                "enabled": feature_mode == "multivariate_v2",
+                "source_csv": drivers_csv,
+                "time_col": drivers_time_col if feature_mode == "multivariate_v2" else None,
+                "driver_columns": (feature_context.get("exogenous") or {}).get("driver_columns"),
+                "stats": (feature_context.get("exogenous") or {}).get("stats"),
+                "future_strategy": "last_observation_persistence" if feature_mode == "multivariate_v2" else None,
+            },
             "train_size": int(len(x_train)),
             "val_size": int(len(x_val)),
             "uncertainty": uncertainty,
@@ -112,6 +137,7 @@ def train_model(
         "model_type": model_type,
         "feature_mode": feature_mode,
         "n_features": int(x_train.shape[-1]),
+        "feature_names": feature_context["feature_names"],
         "final_train_loss": float(history.history["loss"][-1]),
         "final_val_loss": float(history.history["val_loss"][-1]),
         "val_loss": float(val_metrics[0]),
@@ -127,12 +153,25 @@ def main():
     parser.add_argument("--value-col", default="sea_level", help="Sea level column name")
     parser.add_argument("--time-col", default=None, help="Optional timestamp column")
     parser.add_argument("--model-type", default="lstm", choices=["lstm", "temporal_cnn", "axial_lstm"])
-    parser.add_argument("--feature-mode", default="multivariate_v1", choices=["univariate_v0", "multivariate_v1"])
+    parser.add_argument("--feature-mode", default="multivariate_v1", choices=["univariate_v0", "multivariate_v1", "multivariate_v2"])
+    parser.add_argument("--drivers-csv", default=None, help="Optional hourly exogenous driver CSV for multivariate_v2.")
+    parser.add_argument("--drivers-time-col", default="timestamp", help="Timestamp column for the driver CSV.")
+    parser.add_argument("--driver-cols", default=None, help="Comma-separated driver columns. Defaults to built-in driver set.")
     parser.add_argument("--out", default="Backend/sea_level_risk/outputs", help="Output directory")
     args = parser.parse_args()
 
     cfg = TrainConfig(feature_mode=args.feature_mode)
-    result = train_model(args.csv, args.value_col, args.time_col, Path(args.out), cfg, model_type=args.model_type)
+    result = train_model(
+        args.csv,
+        args.value_col,
+        args.time_col,
+        Path(args.out),
+        cfg,
+        model_type=args.model_type,
+        drivers_csv=args.drivers_csv,
+        drivers_time_col=args.drivers_time_col,
+        driver_columns=args.driver_cols,
+    )
     print(result)
 
 

@@ -6,7 +6,7 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 
 from .data_utils import apply_zscore, invert_zscore, load_metadata
-from .features import build_feature_frame, resolve_feature_mode
+from .features import build_feature_bundle, resolve_feature_mode
 from .uncertainty import calibrated_quantile_forecast
 
 
@@ -50,6 +50,7 @@ def recursive_forecast_bundle_with_loaded_model(
     recent_values: np.ndarray,
     horizon_hours: int,
     recent_timestamps: list | np.ndarray | pd.Series | None = None,
+    recent_exogenous_frame: pd.DataFrame | None = None,
 ) -> dict:
     recent = np.asarray(recent_values, dtype=np.float32).reshape(-1)
     feature_mode = resolve_feature_mode(metadata.get("feature_mode") or "univariate_v0")
@@ -75,13 +76,19 @@ def recursive_forecast_bundle_with_loaded_model(
     history_values = recent.astype(np.float32).tolist()
     history_timestamps = list(_coerce_recent_timestamps(recent_timestamps, recent))
     preds_norm: list[float] = []
+    exogenous_cfg = metadata.get("exogenous") or {}
+    driver_columns = exogenous_cfg.get("driver_columns")
+    exogenous_stats = exogenous_cfg.get("stats")
 
     for _ in range(horizon_hours):
         normalized_history = apply_zscore(np.array(history_values, dtype=np.float32), mean, std)
-        feature_frame = build_feature_frame(
+        feature_frame, _ = build_feature_bundle(
             values_normalized=normalized_history,
             timestamps=history_timestamps,
             feature_mode=feature_mode,
+            exogenous_frame=recent_exogenous_frame,
+            driver_columns=driver_columns,
+            exogenous_stats=exogenous_stats,
         )
         seq = feature_frame.iloc[-lookback:].to_numpy(dtype=np.float32).reshape(1, lookback, feature_frame.shape[1])
         next_norm = float(model.predict(seq, verbose=0)[0][0])
@@ -109,6 +116,7 @@ def recursive_forecast_with_loaded_model(
     recent_values: np.ndarray,
     horizon_hours: int,
     recent_timestamps: list | np.ndarray | pd.Series | None = None,
+    recent_exogenous_frame: pd.DataFrame | None = None,
 ) -> np.ndarray:
     bundle = recursive_forecast_bundle_with_loaded_model(
         model=model,
@@ -116,6 +124,7 @@ def recursive_forecast_with_loaded_model(
         recent_values=recent_values,
         horizon_hours=horizon_hours,
         recent_timestamps=recent_timestamps,
+        recent_exogenous_frame=recent_exogenous_frame,
     )
     return bundle["point_forecast_m"]
 
@@ -126,6 +135,7 @@ def recursive_forecast_bundle(
     recent_values: np.ndarray,
     horizon_hours: int,
     recent_timestamps: list | np.ndarray | pd.Series | None = None,
+    recent_exogenous_frame: pd.DataFrame | None = None,
 ) -> dict:
     metadata = load_metadata(Path(metadata_path))
     model = load_model(model_path, compile=False)
@@ -135,6 +145,7 @@ def recursive_forecast_bundle(
         recent_values=recent_values,
         horizon_hours=horizon_hours,
         recent_timestamps=recent_timestamps,
+        recent_exogenous_frame=recent_exogenous_frame,
     )
 
 
@@ -144,6 +155,7 @@ def recursive_forecast(
     recent_values: np.ndarray,
     horizon_hours: int,
     recent_timestamps: list | np.ndarray | pd.Series | None = None,
+    recent_exogenous_frame: pd.DataFrame | None = None,
 ) -> np.ndarray:
     bundle = recursive_forecast_bundle(
         model_path=model_path,
@@ -151,6 +163,7 @@ def recursive_forecast(
         recent_values=recent_values,
         horizon_hours=horizon_hours,
         recent_timestamps=recent_timestamps,
+        recent_exogenous_frame=recent_exogenous_frame,
     )
     return bundle["point_forecast_m"]
 

@@ -55,6 +55,11 @@ To recalibrate forecast uncertainty bands from rolling residuals:
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.recalibrate_uncertainty --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 1440
 ```
 
+To train or backtest the new `multivariate_v2` path with hourly exogenous drivers, pass a separate driver CSV:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model --city boston --model-type temporal_cnn --feature-mode multivariate_v2 --drivers-csv data/boston_drivers_hourly.csv --drivers-time-col timestamp --driver-cols wind_speed,air_pressure,precipitation,river_discharge
+```
+
 ## QGIS workflow
 1. Build package:
 ```powershell

@@ -108,6 +108,9 @@ def train_city_model(
     batch_size: int | None = None,
     lookback_hours: int | None = None,
     feature_mode: str | None = None,
+    drivers_csv: str | None = None,
+    drivers_time_col: str = "timestamp",
+    driver_cols: str | None = None,
     reuse_model: bool = False,
 ) -> dict:
     registry = load_city_registry()
@@ -173,6 +176,9 @@ def train_city_model(
         output_dir=output_dir,
         cfg=cfg,
         model_type=model_type,
+        drivers_csv=drivers_csv,
+        drivers_time_col=drivers_time_col,
+        driver_columns=driver_cols,
     )
 
     metadata_path = Path(result["metadata_path"])
@@ -214,7 +220,10 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lookback-hours", type=int, default=None)
-    parser.add_argument("--feature-mode", default="multivariate_v1", choices=["univariate_v0", "multivariate_v1"])
+    parser.add_argument("--feature-mode", default="multivariate_v1", choices=["univariate_v0", "multivariate_v1", "multivariate_v2"])
+    parser.add_argument("--drivers-csv", default=None, help="Optional hourly exogenous driver CSV for multivariate_v2.")
+    parser.add_argument("--drivers-time-col", default="timestamp")
+    parser.add_argument("--driver-cols", default=None, help="Comma-separated exogenous driver columns.")
     parser.add_argument("--reuse-model", action="store_true")
     args = parser.parse_args()
 
@@ -232,6 +241,9 @@ def main():
         batch_size=args.batch_size,
         lookback_hours=args.lookback_hours,
         feature_mode=args.feature_mode,
+        drivers_csv=args.drivers_csv,
+        drivers_time_col=args.drivers_time_col,
+        driver_cols=args.driver_cols,
         reuse_model=args.reuse_model,
     )
     print(result)
