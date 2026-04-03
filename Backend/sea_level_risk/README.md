@@ -89,6 +89,13 @@ Current backtest metrics include:
 - `peak_level_mae_m` and `peak_timing_mae_h`
 - `P10-P90` interval coverage and mean interval width
 
+Recalibrate uncertainty bands from rolling backtest residuals:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.recalibrate_uncertainty --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 1440
+```
+
+This updates each model metadata file in place so runtime forecasts can use horizon-specific residual quantiles instead of a single shared residual band.
+
 ## Realtime API (multi-city, provider-aware)
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.realtime_api \

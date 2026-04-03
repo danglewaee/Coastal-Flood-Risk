@@ -50,6 +50,11 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest --all-noaa --
 
 Outputs are written under `Backend/sea_level_risk/outputs/backtests/`.
 
+To recalibrate forecast uncertainty bands from rolling residuals:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.recalibrate_uncertainty --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 1440
+```
+
 ## QGIS workflow
 1. Build package:
 ```powershell
