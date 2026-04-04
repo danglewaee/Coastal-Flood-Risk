@@ -354,9 +354,9 @@ def _backtest_model(
     model_info = {
         "model_path": model_spec["model_path"],
         "metadata_path": model_spec["metadata_path"],
-        "model_type": metadata.get("model_type"),
-        "feature_mode": metadata.get("feature_mode"),
-        "feature_names": metadata.get("feature_names"),
+        "model_type": metadata.get("model_type") or model_spec.get("model_type"),
+        "feature_mode": metadata.get("feature_mode", "univariate_v0"),
+        "feature_names": metadata.get("feature_names", ["sea_level_z"]),
         "uncertainty_method": (metadata.get("uncertainty") or {}).get("method"),
         "exogenous_enabled": bool((metadata.get("exogenous") or {}).get("enabled")),
         "driver_columns": (metadata.get("exogenous") or {}).get("driver_columns"),
