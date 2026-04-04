@@ -21,6 +21,7 @@ from .dem_provider import (
     ensure_dem_for_lat_lon,
     ensure_dem_for_station,
 )
+from .exogenous import fetch_runtime_exogenous_forecast
 from .forecast import recursive_forecast_bundle_with_loaded_model
 from .forecast_baselines import tide_persistence_forecast_bundle_from_frame
 from .gis import dem_to_flood_polygon
@@ -233,6 +234,78 @@ class RealtimeService:
         self._city_model_cache[city_slug] = bundle
         return bundle
 
+    def _resolve_runtime_exogenous(
+        self,
+        cfg: dict,
+        metadata: dict,
+        recent_timestamps: list | None,
+        horizon: int,
+    ) -> tuple[pd.DataFrame | None, dict]:
+        feature_mode = str(metadata.get("feature_mode") or "univariate_v0").strip().lower()
+        exogenous_cfg = metadata.get("exogenous") or {}
+        driver_columns = exogenous_cfg.get("driver_columns")
+
+        if feature_mode != "multivariate_v2" or not exogenous_cfg.get("enabled"):
+            return None, {"mode": "not_required", "reason": "feature_mode_does_not_require_live_drivers"}
+
+        lat = cfg.get("lat")
+        lon = cfg.get("lon")
+        if lat is None or lon is None:
+            return None, {
+                "mode": "fallback_unavailable",
+                "reason": "missing_city_coordinates",
+                "driver_columns": driver_columns,
+            }
+
+        if not recent_timestamps:
+            return None, {
+                "mode": "fallback_unavailable",
+                "reason": "missing_recent_timestamps",
+                "driver_columns": driver_columns,
+            }
+
+        recent_index = pd.to_datetime(pd.Series(recent_timestamps), errors="coerce", utc=True).dropna()
+        if recent_index.empty:
+            return None, {
+                "mode": "fallback_unavailable",
+                "reason": "invalid_recent_timestamps",
+                "driver_columns": driver_columns,
+            }
+
+        last_obs_ts = pd.Timestamp(recent_index.iloc[-1])
+        obs_delay_hours = max(
+            0.0,
+            float((pd.Timestamp(datetime.now(timezone.utc)) - last_obs_ts).total_seconds() / 3600.0),
+        )
+        lookback_hours = int(metadata.get("lookback_hours", 24))
+
+        if obs_delay_hours > max(lookback_hours, 24):
+            return None, {
+                "mode": "fallback_unavailable",
+                "reason": "stale_observation_window_for_live_drivers",
+                "driver_columns": driver_columns,
+                "observation_delay_hours": obs_delay_hours,
+            }
+
+        try:
+            frame, info = fetch_runtime_exogenous_forecast(
+                latitude=float(lat),
+                longitude=float(lon),
+                lookback_hours=lookback_hours,
+                horizon_hours=horizon,
+                driver_columns=driver_columns,
+                timezone_name=cfg.get("timezone") or "UTC",
+            )
+            info["observation_delay_hours"] = obs_delay_hours
+            return frame, info
+        except Exception as exc:
+            return None, {
+                "mode": "fallback_unavailable",
+                "reason": str(exc),
+                "driver_columns": driver_columns,
+                "observation_delay_hours": obs_delay_hours,
+            }
+
     def _forecast(
         self,
         cfg: dict,
@@ -247,30 +320,57 @@ class RealtimeService:
 
         if city_bundle is not None:
             city_model, city_metadata, city_spec = city_bundle
+            runtime_exogenous_frame, runtime_exogenous_info = self._resolve_runtime_exogenous(
+                cfg=cfg,
+                metadata=city_metadata,
+                recent_timestamps=recent_timestamps,
+                horizon=horizon,
+            )
             forecast_bundle = recursive_forecast_bundle_with_loaded_model(
                 model=city_model,
                 metadata=city_metadata,
                 recent_values=recent,
                 horizon_hours=horizon,
                 recent_timestamps=recent_timestamps,
+                recent_exogenous_frame=runtime_exogenous_frame,
             )
-            return forecast_bundle, "model_recursive", None, {
+            note = None
+            if runtime_exogenous_info.get("mode") == "fallback_unavailable":
+                note = (
+                    "Live weather-driver forecast was unavailable for this multivariate_v2 model. "
+                    "Using fallback exogenous inputs."
+                )
+            return forecast_bundle, "model_recursive", note, {
                 **city_spec,
                 "lookback_hours": int(city_metadata.get("lookback_hours", 24)),
                 "model_type": city_metadata.get("model_type") or city_spec.get("model_type"),
                 "feature_mode": city_metadata.get("feature_mode", "univariate_v0"),
                 "feature_names": city_metadata.get("feature_names", ["sea_level_z"]),
+                "exogenous_runtime": runtime_exogenous_info,
             }
 
         if requested_mode == "model_recursive" and self.model is not None and self.metadata:
+            runtime_exogenous_frame, runtime_exogenous_info = self._resolve_runtime_exogenous(
+                cfg=cfg,
+                metadata=self.metadata,
+                recent_timestamps=recent_timestamps,
+                horizon=horizon,
+            )
             forecast_bundle = recursive_forecast_bundle_with_loaded_model(
                 model=self.model,
                 metadata=self.metadata,
                 recent_values=recent,
                 horizon_hours=horizon,
                 recent_timestamps=recent_timestamps,
+                recent_exogenous_frame=runtime_exogenous_frame,
             )
-            return forecast_bundle, "model_recursive", None, {
+            note = None
+            if runtime_exogenous_info.get("mode") == "fallback_unavailable":
+                note = (
+                    "Live weather-driver forecast was unavailable for this multivariate_v2 model. "
+                    "Using fallback exogenous inputs."
+                )
+            return forecast_bundle, "model_recursive", note, {
                 "city": city_key,
                 "model_path": self.global_model_path,
                 "metadata_path": self.global_metadata_path,
@@ -279,6 +379,7 @@ class RealtimeService:
                 "lookback_hours": int(self.metadata.get("lookback_hours", 24)),
                 "feature_mode": self.metadata.get("feature_mode", "univariate_v0"),
                 "feature_names": self.metadata.get("feature_names", ["sea_level_z"]),
+                "exogenous_runtime": runtime_exogenous_info,
             }
 
         note = None
@@ -361,6 +462,7 @@ class RealtimeService:
                 "feature_mode": (model_spec or {}).get("feature_mode", forecast_bundle.get("feature_mode")),
                 "feature_names": (model_spec or {}).get("feature_names"),
                 "uncertainty": forecast_bundle.get("uncertainty"),
+                "exogenous_runtime": (model_spec or {}).get("exogenous_runtime"),
             },
             "source": {
                 "status": fetch_meta.get("status", "ok"),

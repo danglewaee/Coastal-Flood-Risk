@@ -57,7 +57,7 @@ Important:
 - `download_weather_drivers.py` uses the Open-Meteo Historical Weather API to build hourly driver CSVs aligned to each city's gauge-history date range. In this first `v2` prototype, `river_discharge` is zero-filled until a dedicated discharge source is integrated.
 - Trained models now store validation-residual uncertainty calibration so the API can return `P10 / P50 / P90` forecast bands.
 - Legacy city models remain usable. They will report `feature_mode = univariate_v0` until they are retrained with `--feature-mode multivariate_v1`.
-- If you train `multivariate_v2`, runtime inference stays backward-compatible: when no live driver feed is available yet, forecast rollout falls back to last-known/zero-filled driver inputs instead of failing.
+- If you train `multivariate_v2`, runtime inference now attempts to fetch recent + short-horizon weather drivers from the Open-Meteo Forecast API for cities with fresh observations and `lat/lon` metadata. If the live driver feed is unavailable, forecast rollout falls back to zero-filled exogenous inputs instead of failing.
 
 Example `multivariate_v2` training:
 ```powershell
@@ -148,6 +148,7 @@ Notes:
 - Cities without a city-specific model fall back to the tide-aware baseline.
 - `forecast_values_m` now represents the calibrated `P50` trajectory.
 - `forecast_quantiles` and `forecast[*].p10_m / p50_m / p90_m` expose probabilistic outputs.
+- `model.exogenous_runtime` reports whether a live weather-driver forecast feed was used for `multivariate_v2` inference or whether runtime fell back to non-live exogenous inputs.
 - NOAA realtime fetch uses `water_level`, not `hourly_height`.
 - IOC realtime fetch parses the public HTML table feed and resamples it to hourly series.
 - `amsterdam` is implemented as `Amsterdam-region proxy (Hoek van Holland)`. Treat it as delayed regional proxy mode, not a direct Amsterdam city gauge.

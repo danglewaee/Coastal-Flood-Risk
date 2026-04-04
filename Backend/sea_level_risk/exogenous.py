@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 
 
 DEFAULT_DRIVER_COLUMNS = ["wind_speed", "air_pressure", "precipitation", "river_discharge"]
+ARCHIVE_API_URL = "https://archive-api.open-meteo.com/v1/archive"
+FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_HOURLY_VARS = {
+    "wind_speed_10m": "wind_speed",
+    "pressure_msl": "air_pressure",
+    "precipitation": "precipitation",
+}
 
 
 def resolve_driver_columns(driver_columns: str | list[str] | tuple[str, ...] | None) -> list[str]:
@@ -17,6 +26,41 @@ def resolve_driver_columns(driver_columns: str | list[str] | tuple[str, ...] | N
         return cols or list(DEFAULT_DRIVER_COLUMNS)
     cols = [str(part).strip() for part in driver_columns if str(part).strip()]
     return cols or list(DEFAULT_DRIVER_COLUMNS)
+
+
+def _request_open_meteo_hourly(
+    api_url: str,
+    *,
+    latitude: float,
+    longitude: float,
+    hourly_vars: dict[str, str],
+    extra_params: dict | None = None,
+    timeout: int = 90,
+) -> pd.DataFrame:
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": ",".join(hourly_vars.keys()),
+        "timezone": "UTC",
+    }
+    if extra_params:
+        params.update(extra_params)
+
+    response = requests.get(api_url, params=params, timeout=timeout)
+    response.raise_for_status()
+    payload = response.json()
+    hourly = payload.get("hourly") or {}
+    timestamps = hourly.get("time")
+    if not timestamps:
+        raise ValueError(f"Open-Meteo response from '{api_url}' did not include hourly timestamps.")
+
+    frame = pd.DataFrame({"timestamp": pd.to_datetime(timestamps, errors="coerce", utc=True)})
+    for source_name, target_name in hourly_vars.items():
+        values = hourly.get(source_name)
+        if values is None:
+            raise ValueError(f"Open-Meteo response is missing hourly variable '{source_name}'.")
+        frame[target_name] = pd.to_numeric(pd.Series(values), errors="coerce")
+    return frame.dropna(subset=["timestamp"]).reset_index(drop=True)
 
 
 def load_exogenous_series(
@@ -117,3 +161,54 @@ def standardize_exogenous_frame(
         stds[col] = std
 
     return out[columns], {"columns": columns, "means": means, "stds": stds}
+
+
+def fetch_runtime_exogenous_forecast(
+    *,
+    latitude: float,
+    longitude: float,
+    lookback_hours: int,
+    horizon_hours: int,
+    driver_columns: str | list[str] | tuple[str, ...] | None = None,
+    timezone_name: str = "UTC",
+    source_label: str = "Open-Meteo Forecast API",
+) -> tuple[pd.DataFrame, dict]:
+    columns = resolve_driver_columns(driver_columns)
+    hourly_vars = {source: target for source, target in OPEN_METEO_HOURLY_VARS.items() if target in columns}
+    if not hourly_vars:
+        raise ValueError("Runtime exogenous forecast requested without any supported weather driver columns.")
+
+    frame = _request_open_meteo_hourly(
+        FORECAST_API_URL,
+        latitude=latitude,
+        longitude=longitude,
+        hourly_vars=hourly_vars,
+        extra_params={
+            "past_hours": max(int(lookback_hours), 24),
+            "forecast_hours": max(int(horizon_hours), 1),
+        },
+        timeout=60,
+    )
+    for col in columns:
+        if col not in frame.columns:
+            frame[col] = 0.0
+    frame = frame[["timestamp", *columns]].sort_values("timestamp").drop_duplicates(subset=["timestamp"], keep="last")
+
+    metadata = {
+        "mode": "live_forecast_feed",
+        "source": source_label,
+        "latitude": latitude,
+        "longitude": longitude,
+        "timezone": timezone_name,
+        "driver_columns": columns,
+        "weather_variables": list(hourly_vars.keys()),
+        "lookback_hours": int(lookback_hours),
+        "forecast_hours": int(horizon_hours),
+        "rows": int(frame.shape[0]),
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "notes": [
+            "Open-Meteo forecast feed is used to provide recent and future hourly weather drivers for multivariate_v2 runtime inference.",
+            "river_discharge remains zero-filled until a live discharge source is integrated.",
+        ],
+    }
+    return frame, metadata
