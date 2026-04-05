@@ -222,6 +222,13 @@ Default expected local paths:
 - `data/exposure/<city>/roads.geojson`
 - `data/exposure/<city>/critical_facilities.geojson`
 
+Enhanced Boston / New York layers:
+- `data/exposure/<city>/hospitals.geojson`
+- `data/exposure/<city>/fire_stations.geojson`
+- `data/exposure/<city>/police.geojson`
+- `data/exposure/<city>/schools.geojson`
+- `data/exposure/<city>/power_substations.geojson`
+
 Download real exposure layers from OpenStreetMap Overpass:
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_layers --cities boston newyork honolulu jakarta amsterdam
@@ -235,12 +242,18 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_laye
 Notes:
 - The downloader creates local GeoJSON layers under `data/exposure/`.
 - Roads are exported as line features.
-- Critical facilities are exported as point features from OSM `hospital`, `clinic`, `police`, and `fire_station` tags.
+- Critical facilities are exported as point features from OSM `hospital`, `clinic`, `police`, and `fire_station` tags for legacy/default cities.
+- Boston and New York use a richer operational layer set: hospitals, fire stations, police, schools, and power substations.
 - Scenario payloads now include `impact_summaries[*].exposure_summary` for any registered layer present on disk.
+- Scenario payloads now also include:
+  - `impact_summaries[*].affected_road_length_m`
+  - `impact_summaries[*].affected_site_count_total`
+  - `impact_summaries[*].impact_headline_items`
+  - `impact_summaries[*].exposure_rollup`
 - Exposure summaries report intersections plus geometry-aware metrics:
-  - polygon area in `affected_area_m2`
-  - line length in `affected_length_m`
-  - point counts in `affected_point_count`
+    - polygon area in `affected_area_m2`
+    - line length in `affected_length_m`
+    - point counts in `affected_point_count`
 
 The current implementation is still intentionally pragmatic:
 - it computes direct scenario-layer intersections

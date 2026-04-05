@@ -10,6 +10,18 @@ from .priority import ensure_hotspots_from_scenarios, hotspot_records_from_gdf
 
 
 DEFAULT_EXPOSURE_REGISTRY = {}
+POINT_METRIC = "points"
+LENGTH_METRIC = "length_m"
+AREA_METRIC = "area_m2"
+
+CATEGORY_LABELS = {
+    "transport": "Road network",
+    "healthcare": "Hospitals & clinics",
+    "emergency_response": "Emergency response sites",
+    "education": "Schools & campuses",
+    "power": "Power substations",
+    "critical_services": "Critical facilities",
+}
 
 
 def load_exposure_registry(path: str = "Backend/sea_level_risk/exposure_registry.json") -> dict:
@@ -36,6 +48,94 @@ def _scenario_hotspot_metrics(hotspot_gdf: gpd.GeoDataFrame, scenario: str) -> d
         "top_hotspots": records,
         "largest_hotspot_area_m2": largest,
         "top3_hotspot_area_m2": top3_area,
+    }
+
+
+def _enrich_exposure_row(row: dict, layer_cfg: dict) -> dict:
+    metric = str(layer_cfg.get("metric") or "").lower()
+    if metric == LENGTH_METRIC:
+        affected_value = float(row.get("affected_length_m", 0.0))
+        affected_unit = "m"
+    elif metric == AREA_METRIC:
+        affected_value = float(row.get("affected_area_m2", 0.0))
+        affected_unit = "m2"
+    else:
+        metric = POINT_METRIC
+        affected_value = int(row.get("affected_point_count", 0))
+        affected_unit = "sites"
+
+    enriched = dict(row)
+    enriched["display_name"] = layer_cfg.get("display_name", layer_cfg.get("name", row.get("layer", "layer")))
+    enriched["category"] = layer_cfg.get("category", layer_cfg.get("name", row.get("layer", "other")))
+    enriched["metric"] = metric
+    enriched["affected_value"] = affected_value
+    enriched["affected_unit"] = affected_unit
+    return enriched
+
+
+def _rollup_exposure_rows(exposure_rows: list[dict]) -> dict:
+    groups: dict[tuple[str, str], dict] = {}
+    total_sites = 0
+    total_road_length_m = 0.0
+    headline_items: list[str] = []
+
+    for row in exposure_rows:
+        category = str(row.get("category") or "other")
+        metric = str(row.get("metric") or POINT_METRIC)
+        key = (category, metric)
+        group = groups.setdefault(
+            key,
+            {
+                "category": category,
+                "display_name": CATEGORY_LABELS.get(category, category.replace("_", " ").title()),
+                "metric": metric,
+                "affected_value": 0.0,
+                "affected_unit": row.get("affected_unit"),
+                "layers": [],
+            },
+        )
+        group["affected_value"] += float(row.get("affected_value", 0.0))
+        group["layers"].append(row.get("display_name") or row.get("layer"))
+
+        if metric == POINT_METRIC:
+            total_sites += int(row.get("affected_value", 0))
+        if category == "transport" and metric == LENGTH_METRIC:
+            total_road_length_m += float(row.get("affected_value", 0.0))
+
+    rollup_rows = []
+    for group in groups.values():
+        value = group["affected_value"]
+        if group["metric"] == POINT_METRIC:
+            value = int(round(value))
+        else:
+            value = round(float(value), 1)
+        rollup_rows.append(
+            {
+                "category": group["category"],
+                "display_name": group["display_name"],
+                "metric": group["metric"],
+                "affected_value": value,
+                "affected_unit": group["affected_unit"],
+                "layers": ", ".join(sorted({item for item in group["layers"] if item})),
+            }
+        )
+
+    rollup_rows.sort(key=lambda item: float(item["affected_value"]) if item["affected_value"] is not None else 0.0, reverse=True)
+
+    if total_road_length_m > 0.0:
+        headline_items.append(f"{total_road_length_m / 1000.0:.1f} km of road network intersect projected flooding")
+    if total_sites > 0:
+        headline_items.append(f"{total_sites} priority sites intersect projected flooding")
+    for row in rollup_rows:
+        if row["metric"] == POINT_METRIC and int(row["affected_value"]) > 0 and row["category"] in {"healthcare", "emergency_response", "power"}:
+            headline_items.append(f"{int(row['affected_value'])} {row['display_name'].lower()} affected")
+
+    return {
+        "rows": rollup_rows,
+        "affected_site_count_total": int(total_sites),
+        "affected_road_length_m": round(float(total_road_length_m), 1),
+        "categories_impacted": int(sum(1 for row in rollup_rows if float(row["affected_value"]) > 0.0)),
+        "headline_items": headline_items[:4],
     }
 
 
@@ -71,9 +171,12 @@ def build_impact_summaries(
             if not layer_path or not Path(layer_path).exists():
                 continue
             try:
-                exposure_rows.append(compute_exposure(scenario["geojson"], layer_path, layer_name=layer_name))
+                row = compute_exposure(scenario["geojson"], layer_path, layer_name=layer_name)
+                exposure_rows.append(_enrich_exposure_row(row, layer_cfg))
             except Exception:
                 continue
+
+        rollup = _rollup_exposure_rows(exposure_rows)
 
         flood_ratio = scenario.get("flood_ratio")
         summaries[scenario_name] = {
@@ -89,6 +192,11 @@ def build_impact_summaries(
             "top3_hotspot_area_m2": metrics["top3_hotspot_area_m2"],
             "exposure_layers_configured": int(len(city_layers)),
             "exposure_layers_available": int(len(exposure_rows)),
+            "affected_site_count_total": rollup["affected_site_count_total"],
+            "affected_road_length_m": rollup["affected_road_length_m"],
+            "categories_impacted": rollup["categories_impacted"],
+            "impact_headline_items": rollup["headline_items"],
+            "exposure_rollup": rollup["rows"],
             "exposure_summary": exposure_rows,
             "hotspots_geojson": hotspot_geojson,
             "hotspots_csv": hotspot_csv,

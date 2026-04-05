@@ -2,70 +2,168 @@
   "honolulu": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/honolulu/roads.geojson"
     },
     {
       "name": "critical_facilities",
+      "display_name": "Critical facilities",
+      "category": "critical_services",
+      "metric": "points",
       "path": "data/exposure/honolulu/critical_facilities.geojson"
     }
   ],
   "boston": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/boston/roads.geojson"
     },
     {
-      "name": "critical_facilities",
-      "path": "data/exposure/boston/critical_facilities.geojson"
+      "name": "hospitals",
+      "display_name": "Hospitals & clinics",
+      "category": "healthcare",
+      "metric": "points",
+      "path": "data/exposure/boston/hospitals.geojson"
+    },
+    {
+      "name": "fire_stations",
+      "display_name": "Fire stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/boston/fire_stations.geojson"
+    },
+    {
+      "name": "police",
+      "display_name": "Police stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/boston/police.geojson"
+    },
+    {
+      "name": "schools",
+      "display_name": "Schools & campuses",
+      "category": "education",
+      "metric": "points",
+      "path": "data/exposure/boston/schools.geojson"
+    },
+    {
+      "name": "power_substations",
+      "display_name": "Power substations",
+      "category": "power",
+      "metric": "points",
+      "path": "data/exposure/boston/power_substations.geojson"
     }
   ],
   "newyork": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/newyork/roads.geojson"
     },
     {
-      "name": "critical_facilities",
-      "path": "data/exposure/newyork/critical_facilities.geojson"
+      "name": "hospitals",
+      "display_name": "Hospitals & clinics",
+      "category": "healthcare",
+      "metric": "points",
+      "path": "data/exposure/newyork/hospitals.geojson"
+    },
+    {
+      "name": "fire_stations",
+      "display_name": "Fire stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/newyork/fire_stations.geojson"
+    },
+    {
+      "name": "police",
+      "display_name": "Police stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/newyork/police.geojson"
+    },
+    {
+      "name": "schools",
+      "display_name": "Schools & campuses",
+      "category": "education",
+      "metric": "points",
+      "path": "data/exposure/newyork/schools.geojson"
+    },
+    {
+      "name": "power_substations",
+      "display_name": "Power substations",
+      "category": "power",
+      "metric": "points",
+      "path": "data/exposure/newyork/power_substations.geojson"
     }
   ],
   "jakarta": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/jakarta/roads.geojson"
     },
     {
       "name": "critical_facilities",
+      "display_name": "Critical facilities",
+      "category": "critical_services",
+      "metric": "points",
       "path": "data/exposure/jakarta/critical_facilities.geojson"
     }
   ],
   "amsterdam": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/amsterdam/roads.geojson"
     },
     {
       "name": "critical_facilities",
+      "display_name": "Critical facilities",
+      "category": "critical_services",
+      "metric": "points",
       "path": "data/exposure/amsterdam/critical_facilities.geojson"
     }
   ],
   "miami": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/miami/roads.geojson"
     },
     {
       "name": "critical_facilities",
+      "display_name": "Critical facilities",
+      "category": "critical_services",
+      "metric": "points",
       "path": "data/exposure/miami/critical_facilities.geojson"
     }
   ],
   "sanfrancisco": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/sanfrancisco/roads.geojson"
     },
     {
       "name": "critical_facilities",
+      "display_name": "Critical facilities",
+      "category": "critical_services",
+      "metric": "points",
       "path": "data/exposure/sanfrancisco/critical_facilities.geojson"
     }
   ]

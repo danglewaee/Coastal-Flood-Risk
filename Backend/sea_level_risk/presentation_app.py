@@ -446,13 +446,36 @@ with top_left:
                 f"score {float(hotspot['priority_score']):.1f} | "
                 f"{float(hotspot['area_m2']):,.0f} m2"
             )
+        rollup_rows = spotlight_impact.get("exposure_rollup", [])
+        if rollup_rows:
+            st.markdown("#### Operational Impact")
+            e1, e2, e3 = st.columns(3)
+            e1.metric(
+                "Road Length Affected",
+                "n/a" if spotlight_impact.get("affected_road_length_m") is None else f"{float(spotlight_impact['affected_road_length_m'])/1000.0:.2f} km",
+            )
+            e2.metric("Priority Sites Affected", f"{int(spotlight_impact.get('affected_site_count_total', 0))}")
+            e3.metric("Impact Categories", f"{int(spotlight_impact.get('categories_impacted', 0))}")
+            for item in spotlight_impact.get("impact_headline_items", []):
+                st.markdown(f"- {item}")
+            rollup_df = pd.DataFrame(rollup_rows).copy()
+            visible_rollup_df = rollup_df[rollup_df["affected_value"].astype(float) > 0].copy()
+            if visible_rollup_df.empty:
+                visible_rollup_df = rollup_df
+            st.dataframe(
+                visible_rollup_df[["display_name", "affected_value", "affected_unit"]],
+                use_container_width=True,
+                hide_index=True,
+            )
         exposure_rows = spotlight_impact.get("exposure_summary", [])
         if exposure_rows:
-            st.markdown("#### Exposure Summary")
+            st.markdown("#### Exposure Detail")
             exposure_df = pd.DataFrame(exposure_rows).copy()
             for col in ["affected_area_m2", "affected_length_m"]:
                 if col in exposure_df.columns:
                     exposure_df[col] = exposure_df[col].map(lambda v: round(float(v), 1))
+            if "affected_value" in exposure_df.columns:
+                exposure_df["affected_value"] = exposure_df["affected_value"].map(lambda v: round(float(v), 1) if isinstance(v, float) else v)
             st.dataframe(exposure_df, use_container_width=True, hide_index=True)
 
     forecast_points = spotlight.get("forecast", [])

@@ -30,6 +30,12 @@ CITY_RADIUS_KM = {
     "amsterdam": 20.0,
 }
 
+DEFAULT_CITY_LAYER_ORDER = ["roads", "critical_facilities"]
+ENHANCED_CITY_LAYER_ORDER = {
+    "boston": ["roads", "hospitals", "fire_stations", "police", "schools", "power_substations"],
+    "newyork": ["roads", "hospitals", "fire_stations", "police", "schools", "power_substations"],
+}
+
 
 def _bbox_for_city(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
     lat_delta = radius_km / 111.32
@@ -57,6 +63,58 @@ def _facilities_query(south: float, west: float, north: float, east: float) -> s
 (
   nwr["amenity"~"hospital|clinic|police|fire_station"]({south},{west},{north},{east});
   nwr["emergency"="fire_station"]({south},{west},{north},{east});
+);
+out center tags;
+""".strip()
+
+
+def _hospitals_query(south: float, west: float, north: float, east: float) -> str:
+    return f"""
+[out:json][timeout:180];
+(
+  nwr["amenity"~"hospital|clinic"]({south},{west},{north},{east});
+  nwr["healthcare"~"hospital|clinic"]({south},{west},{north},{east});
+);
+out center tags;
+""".strip()
+
+
+def _fire_stations_query(south: float, west: float, north: float, east: float) -> str:
+    return f"""
+[out:json][timeout:180];
+(
+  nwr["amenity"="fire_station"]({south},{west},{north},{east});
+  nwr["emergency"="fire_station"]({south},{west},{north},{east});
+);
+out center tags;
+""".strip()
+
+
+def _police_query(south: float, west: float, north: float, east: float) -> str:
+    return f"""
+[out:json][timeout:180];
+(
+  nwr["amenity"="police"]({south},{west},{north},{east});
+);
+out center tags;
+""".strip()
+
+
+def _schools_query(south: float, west: float, north: float, east: float) -> str:
+    return f"""
+[out:json][timeout:180];
+(
+  nwr["amenity"~"school|college|university|kindergarten"]({south},{west},{north},{east});
+);
+out center tags;
+""".strip()
+
+
+def _power_substations_query(south: float, west: float, north: float, east: float) -> str:
+    return f"""
+[out:json][timeout:180];
+(
+  nwr["power"="substation"]({south},{west},{north},{east});
 );
 out center tags;
 """.strip()
@@ -110,25 +168,86 @@ def _facility_point(element: dict) -> Point | None:
     return None
 
 
-def _facilities_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+def _point_features_gdf(overpass_json: dict, field_names: list[str] | None = None) -> gpd.GeoDataFrame:
     features = []
     for element in overpass_json.get("elements", []):
         geom = _facility_point(element)
         if geom is None:
             continue
         tags = element.get("tags") or {}
-        features.append(
-            {
-                "osm_id": f"{element.get('type', 'nwr')}/{element.get('id')}",
-                "name": tags.get("name"),
-                "amenity": tags.get("amenity"),
-                "emergency": tags.get("emergency"),
-                "operator": tags.get("operator"),
-                "geometry": geom,
-            }
-        )
+        row = {
+            "osm_id": f"{element.get('type', 'nwr')}/{element.get('id')}",
+            "name": tags.get("name"),
+            "geometry": geom,
+        }
+        for field_name in field_names or []:
+            row[field_name] = tags.get(field_name)
+        features.append(row)
 
     return gpd.GeoDataFrame(features, geometry="geometry", crs="EPSG:4326")
+
+
+def _facilities_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+    return _point_features_gdf(overpass_json, field_names=["amenity", "emergency", "operator"])
+
+
+def _hospitals_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+    return _point_features_gdf(overpass_json, field_names=["amenity", "healthcare", "operator"])
+
+
+def _fire_stations_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+    return _point_features_gdf(overpass_json, field_names=["amenity", "emergency", "operator"])
+
+
+def _police_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+    return _point_features_gdf(overpass_json, field_names=["amenity", "operator"])
+
+
+def _schools_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+    return _point_features_gdf(overpass_json, field_names=["amenity", "operator"])
+
+
+def _power_substations_gdf(overpass_json: dict) -> gpd.GeoDataFrame:
+    return _point_features_gdf(overpass_json, field_names=["power", "operator", "ref"])
+
+
+LAYER_SPECS = {
+    "roads": {
+        "filename": "roads.geojson",
+        "query_builder": _roads_query,
+        "gdf_builder": _roads_gdf,
+    },
+    "critical_facilities": {
+        "filename": "critical_facilities.geojson",
+        "query_builder": _facilities_query,
+        "gdf_builder": _facilities_gdf,
+    },
+    "hospitals": {
+        "filename": "hospitals.geojson",
+        "query_builder": _hospitals_query,
+        "gdf_builder": _hospitals_gdf,
+    },
+    "fire_stations": {
+        "filename": "fire_stations.geojson",
+        "query_builder": _fire_stations_query,
+        "gdf_builder": _fire_stations_gdf,
+    },
+    "police": {
+        "filename": "police.geojson",
+        "query_builder": _police_query,
+        "gdf_builder": _police_gdf,
+    },
+    "schools": {
+        "filename": "schools.geojson",
+        "query_builder": _schools_query,
+        "gdf_builder": _schools_gdf,
+    },
+    "power_substations": {
+        "filename": "power_substations.geojson",
+        "query_builder": _power_substations_query,
+        "gdf_builder": _power_substations_gdf,
+    },
+}
 
 
 def download_city_exposure_layers(
@@ -155,31 +274,35 @@ def download_city_exposure_layers(
     city_dir = Path(out_root) / city_key
     city_dir.mkdir(parents=True, exist_ok=True)
 
-    roads_path = city_dir / "roads.geojson"
-    facilities_path = city_dir / "critical_facilities.geojson"
+    layer_order = ENHANCED_CITY_LAYER_ORDER.get(city_key, DEFAULT_CITY_LAYER_ORDER)
 
     results = {
         "city": city_key,
         "display_name": cfg.get("display_name", city_key),
         "bbox": {"south": south, "west": west, "north": north, "east": east},
         "radius_km": effective_radius,
-        "roads_path": str(roads_path),
-        "critical_facilities_path": str(facilities_path),
+        "layers": [],
     }
 
-    if not (skip_existing and roads_path.exists()):
-        roads = _roads_gdf(_post_query(_roads_query(south, west, north, east), endpoint=endpoint))
-        roads.to_file(roads_path, driver="GeoJSON")
-        results["roads_features"] = int(len(roads))
-    else:
-        results["roads_features"] = int(len(gpd.read_file(roads_path)))
+    for layer_name in layer_order:
+        layer_spec = LAYER_SPECS[layer_name]
+        layer_path = city_dir / layer_spec["filename"]
+        if not (skip_existing and layer_path.exists()):
+            query = layer_spec["query_builder"](south, west, north, east)
+            gdf = layer_spec["gdf_builder"](_post_query(query, endpoint=endpoint))
+            gdf.to_file(layer_path, driver="GeoJSON")
+            feature_count = int(len(gdf))
+        else:
+            feature_count = int(len(gpd.read_file(layer_path)))
 
-    if not (skip_existing and facilities_path.exists()):
-        facilities = _facilities_gdf(_post_query(_facilities_query(south, west, north, east), endpoint=endpoint))
-        facilities.to_file(facilities_path, driver="GeoJSON")
-        results["critical_facilities_features"] = int(len(facilities))
-    else:
-        results["critical_facilities_features"] = int(len(gpd.read_file(facilities_path)))
+        layer_result = {
+            "name": layer_name,
+            "path": str(layer_path),
+            "features": feature_count,
+        }
+        results["layers"].append(layer_result)
+        results[f"{layer_name}_path"] = str(layer_path)
+        results[f"{layer_name}_features"] = feature_count
 
     return results
 

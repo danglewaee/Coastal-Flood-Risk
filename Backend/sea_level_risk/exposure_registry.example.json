@@ -2,21 +2,47 @@
   "boston": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/boston/roads.geojson"
     },
     {
-      "name": "critical_facilities",
-      "path": "data/exposure/boston/critical_facilities.geojson"
+      "name": "hospitals",
+      "display_name": "Hospitals & clinics",
+      "category": "healthcare",
+      "metric": "points",
+      "path": "data/exposure/boston/hospitals.geojson"
+    },
+    {
+      "name": "fire_stations",
+      "display_name": "Fire stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/boston/fire_stations.geojson"
     }
   ],
   "newyork": [
     {
       "name": "roads",
+      "display_name": "Road network",
+      "category": "transport",
+      "metric": "length_m",
       "path": "data/exposure/newyork/roads.geojson"
     },
     {
       "name": "hospitals",
+      "display_name": "Hospitals & clinics",
+      "category": "healthcare",
+      "metric": "points",
       "path": "data/exposure/newyork/hospitals.geojson"
+    },
+    {
+      "name": "schools",
+      "display_name": "Schools & campuses",
+      "category": "education",
+      "metric": "points",
+      "path": "data/exposure/newyork/schools.geojson"
     }
   ]
 }

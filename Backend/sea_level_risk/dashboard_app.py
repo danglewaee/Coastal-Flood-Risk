@@ -198,13 +198,41 @@ def render_impact_summary(payload: dict, scenario: str):
         hotspot_df["area_m2"] = hotspot_df["area_m2"].map(lambda v: round(float(v), 1))
         st.dataframe(hotspot_df, use_container_width=True, hide_index=True)
 
+    rollup_rows = impact.get("exposure_rollup", [])
+    if rollup_rows:
+        st.markdown("**Operational Impact Rollup**")
+        c1, c2, c3 = st.columns(3)
+        c1.metric(
+            "Road Length Affected",
+            "n/a" if impact.get("affected_road_length_m") is None else f"{float(impact['affected_road_length_m'])/1000.0:.2f} km",
+        )
+        c2.metric("Priority Sites Affected", f"{int(impact.get('affected_site_count_total', 0))}")
+        c3.metric("Impact Categories", f"{int(impact.get('categories_impacted', 0))}")
+
+        headline_items = impact.get("impact_headline_items", [])
+        if headline_items:
+            for item in headline_items:
+                st.markdown(f"- {item}")
+
+        rollup_df = pd.DataFrame(rollup_rows).copy()
+        visible_rollup_df = rollup_df[rollup_df["affected_value"].astype(float) > 0].copy()
+        if visible_rollup_df.empty:
+            visible_rollup_df = rollup_df
+        st.dataframe(
+            visible_rollup_df[["display_name", "affected_value", "affected_unit", "layers"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
     exposure_rows = impact.get("exposure_summary", [])
     if exposure_rows:
-        st.markdown("**Exposure Summary**")
+        st.markdown("**Exposure Detail**")
         exposure_df = pd.DataFrame(exposure_rows).copy()
         for col in ["affected_area_m2", "affected_length_m"]:
             if col in exposure_df.columns:
                 exposure_df[col] = exposure_df[col].map(lambda v: round(float(v), 1))
+        if "affected_value" in exposure_df.columns:
+            exposure_df["affected_value"] = exposure_df["affected_value"].map(lambda v: round(float(v), 1) if isinstance(v, float) else v)
         st.dataframe(exposure_df, use_container_width=True, hide_index=True)
 
 
