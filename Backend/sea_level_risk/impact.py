@@ -13,6 +13,7 @@ DEFAULT_EXPOSURE_REGISTRY = {}
 POINT_METRIC = "points"
 LENGTH_METRIC = "length_m"
 AREA_METRIC = "area_m2"
+PEOPLE_METRIC = "people"
 
 CATEGORY_LABELS = {
     "transport": "Road network",
@@ -21,6 +22,7 @@ CATEGORY_LABELS = {
     "education": "Schools & campuses",
     "power": "Power substations",
     "critical_services": "Critical facilities",
+    "population": "Population exposure",
 }
 
 
@@ -59,6 +61,9 @@ def _enrich_exposure_row(row: dict, layer_cfg: dict) -> dict:
     elif metric == AREA_METRIC:
         affected_value = float(row.get("affected_area_m2", 0.0))
         affected_unit = "m2"
+    elif metric == PEOPLE_METRIC:
+        affected_value = float(row.get("affected_weighted_value", 0.0))
+        affected_unit = "people"
     else:
         metric = POINT_METRIC
         affected_value = int(row.get("affected_point_count", 0))
@@ -77,6 +82,7 @@ def _rollup_exposure_rows(exposure_rows: list[dict]) -> dict:
     groups: dict[tuple[str, str], dict] = {}
     total_sites = 0
     total_road_length_m = 0.0
+    total_population_affected = 0.0
     headline_items: list[str] = []
 
     for row in exposure_rows:
@@ -101,6 +107,8 @@ def _rollup_exposure_rows(exposure_rows: list[dict]) -> dict:
             total_sites += int(row.get("affected_value", 0))
         if category == "transport" and metric == LENGTH_METRIC:
             total_road_length_m += float(row.get("affected_value", 0.0))
+        if category == "population" and metric == PEOPLE_METRIC:
+            total_population_affected += float(row.get("affected_value", 0.0))
 
     rollup_rows = []
     for group in groups.values():
@@ -126,6 +134,8 @@ def _rollup_exposure_rows(exposure_rows: list[dict]) -> dict:
         headline_items.append(f"{total_road_length_m / 1000.0:.1f} km of road network intersect projected flooding")
     if total_sites > 0:
         headline_items.append(f"{total_sites} priority sites intersect projected flooding")
+    if total_population_affected > 0.0:
+        headline_items.append(f"Estimated {int(round(total_population_affected)):,} people within affected census-tract footprints")
     for row in rollup_rows:
         if row["metric"] == POINT_METRIC and int(row["affected_value"]) > 0 and row["category"] in {"healthcare", "emergency_response", "power"}:
             headline_items.append(f"{int(row['affected_value'])} {row['display_name'].lower()} affected")
@@ -134,6 +144,7 @@ def _rollup_exposure_rows(exposure_rows: list[dict]) -> dict:
         "rows": rollup_rows,
         "affected_site_count_total": int(total_sites),
         "affected_road_length_m": round(float(total_road_length_m), 1),
+        "population_affected_estimate": int(round(total_population_affected)),
         "categories_impacted": int(sum(1 for row in rollup_rows if float(row["affected_value"]) > 0.0)),
         "headline_items": headline_items[:4],
     }
@@ -171,7 +182,13 @@ def build_impact_summaries(
             if not layer_path or not Path(layer_path).exists():
                 continue
             try:
-                row = compute_exposure(scenario["geojson"], layer_path, layer_name=layer_name)
+                row = compute_exposure(
+                    scenario["geojson"],
+                    layer_path,
+                    layer_name=layer_name,
+                    value_field=layer_cfg.get("value_field"),
+                    weight_by_area=bool(layer_cfg.get("weight_by_area")),
+                )
                 exposure_rows.append(_enrich_exposure_row(row, layer_cfg))
             except Exception:
                 continue
@@ -194,6 +211,7 @@ def build_impact_summaries(
             "exposure_layers_available": int(len(exposure_rows)),
             "affected_site_count_total": rollup["affected_site_count_total"],
             "affected_road_length_m": rollup["affected_road_length_m"],
+            "population_affected_estimate": rollup["population_affected_estimate"],
             "categories_impacted": rollup["categories_impacted"],
             "impact_headline_items": rollup["headline_items"],
             "exposure_rollup": rollup["rows"],

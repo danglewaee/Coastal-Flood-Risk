@@ -4,6 +4,7 @@ from typing import Optional
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rasterio
 from rasterio.features import rasterize, shapes
 from shapely.geometry import box, shape
@@ -277,7 +278,14 @@ def depth_raster_to_flood_polygon(
     }
 
 
-def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "layer") -> dict:
+def compute_exposure(
+    flood_geojson: str,
+    layer_path: str,
+    layer_name: str = "layer",
+    *,
+    value_field: str | None = None,
+    weight_by_area: bool = False,
+) -> dict:
     flood = gpd.read_file(flood_geojson)
     layer = gpd.read_file(layer_path)
 
@@ -288,6 +296,7 @@ def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "lay
             "affected_area_m2": 0.0,
             "affected_length_m": 0.0,
             "affected_point_count": 0,
+            "affected_weighted_value": 0.0,
         }
 
     if flood.crs != layer.crs:
@@ -301,6 +310,7 @@ def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "lay
             "affected_area_m2": 0.0,
             "affected_length_m": 0.0,
             "affected_point_count": 0,
+            "affected_weighted_value": 0.0,
         }
 
     metric_gdf = intersection.to_crs(epsg=EQUAL_AREA_EPSG)
@@ -312,6 +322,27 @@ def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "lay
     area = float(metric_gdf.loc[polygon_mask, "geometry"].area.sum()) if polygon_mask.any() else 0.0
     length = float(metric_gdf.loc[line_mask, "geometry"].length.sum()) if line_mask.any() else 0.0
     point_count = int(point_mask.sum())
+    weighted_value = 0.0
+
+    if value_field and value_field in layer.columns:
+        layer_metric = layer.to_crs(epsg=EQUAL_AREA_EPSG).copy()
+        layer_metric["__source_area_m2"] = layer_metric.geometry.area
+        keep_cols = [col for col in [value_field, "__source_area_m2", "geometry"] if col in layer_metric.columns]
+        layer_metric = layer_metric[keep_cols]
+        flood_metric = flood.to_crs(epsg=EQUAL_AREA_EPSG)
+        intersection_metric = gpd.overlay(layer_metric, flood_metric, how="intersection", keep_geom_type=False)
+        if not intersection_metric.empty:
+            values = pd.to_numeric(intersection_metric[value_field], errors="coerce").fillna(0.0)
+            if weight_by_area:
+                geom_types_metric = intersection_metric.geometry.geom_type.str.lower()
+                polygon_mask_metric = geom_types_metric.isin(["polygon", "multipolygon"])
+                if polygon_mask_metric.any():
+                    source_area = pd.to_numeric(intersection_metric["__source_area_m2"], errors="coerce").replace(0.0, pd.NA)
+                    intersection_area = intersection_metric.geometry.area
+                    ratio = (intersection_area / source_area).fillna(0.0).clip(lower=0.0, upper=1.0)
+                    weighted_value = float((values.loc[polygon_mask_metric] * ratio.loc[polygon_mask_metric]).sum())
+            else:
+                weighted_value = float(values.sum())
 
     source_geom_types = sorted({str(item).lower() for item in layer.geometry.geom_type.dropna().unique().tolist()})
 
@@ -321,6 +352,7 @@ def compute_exposure(flood_geojson: str, layer_path: str, layer_name: str = "lay
         "affected_area_m2": area,
         "affected_length_m": length,
         "affected_point_count": point_count,
+        "affected_weighted_value": weighted_value,
         "source_geometry_types": source_geom_types,
     }
 

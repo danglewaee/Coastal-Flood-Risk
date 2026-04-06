@@ -449,13 +449,17 @@ with top_left:
         rollup_rows = spotlight_impact.get("exposure_rollup", [])
         if rollup_rows:
             st.markdown("#### Operational Impact")
-            e1, e2, e3 = st.columns(3)
+            e1, e2, e3, e4 = st.columns(4)
             e1.metric(
                 "Road Length Affected",
                 "n/a" if spotlight_impact.get("affected_road_length_m") is None else f"{float(spotlight_impact['affected_road_length_m'])/1000.0:.2f} km",
             )
             e2.metric("Priority Sites Affected", f"{int(spotlight_impact.get('affected_site_count_total', 0))}")
             e3.metric("Impact Categories", f"{int(spotlight_impact.get('categories_impacted', 0))}")
+            e4.metric(
+                "Population Affected",
+                "n/a" if spotlight_impact.get("population_affected_estimate") in {None, 0} else f"{int(spotlight_impact['population_affected_estimate']):,}",
+            )
             for item in spotlight_impact.get("impact_headline_items", []):
                 st.markdown(f"- {item}")
             rollup_df = pd.DataFrame(rollup_rows).copy()

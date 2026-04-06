@@ -57,6 +57,15 @@
       "category": "power",
       "metric": "points",
       "path": "data/exposure/boston/power_substations.geojson"
+    },
+    {
+      "name": "population_tracts",
+      "display_name": "Population in census tracts",
+      "category": "population",
+      "metric": "people",
+      "value_field": "population_total",
+      "weight_by_area": true,
+      "path": "data/exposure/boston/population_tracts.geojson"
     }
   ],
   "newyork": [
@@ -101,6 +110,15 @@
       "category": "power",
       "metric": "points",
       "path": "data/exposure/newyork/power_substations.geojson"
+    },
+    {
+      "name": "population_tracts",
+      "display_name": "Population in census tracts",
+      "category": "population",
+      "metric": "people",
+      "value_field": "population_total",
+      "weight_by_area": true,
+      "path": "data/exposure/newyork/population_tracts.geojson"
     }
   ],
   "jakarta": [

@@ -201,13 +201,17 @@ def render_impact_summary(payload: dict, scenario: str):
     rollup_rows = impact.get("exposure_rollup", [])
     if rollup_rows:
         st.markdown("**Operational Impact Rollup**")
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric(
             "Road Length Affected",
             "n/a" if impact.get("affected_road_length_m") is None else f"{float(impact['affected_road_length_m'])/1000.0:.2f} km",
         )
         c2.metric("Priority Sites Affected", f"{int(impact.get('affected_site_count_total', 0))}")
         c3.metric("Impact Categories", f"{int(impact.get('categories_impacted', 0))}")
+        c4.metric(
+            "Population Affected",
+            "n/a" if impact.get("population_affected_estimate") in {None, 0} else f"{int(impact['population_affected_estimate']):,}",
+        )
 
         headline_items = impact.get("impact_headline_items", [])
         if headline_items:
