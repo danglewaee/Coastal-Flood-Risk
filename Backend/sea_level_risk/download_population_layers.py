@@ -23,6 +23,8 @@ DEFAULT_RADIUS_KM = 24.0
 CITY_POPULATION_STATE_FIPS = {
     "boston": ["25"],
     "newyork": ["34", "36"],
+    "miami": ["12"],
+    "sanfrancisco": ["06"],
 }
 
 

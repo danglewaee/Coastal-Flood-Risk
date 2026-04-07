@@ -222,7 +222,7 @@ Default expected local paths:
 - `data/exposure/<city>/roads.geojson`
 - `data/exposure/<city>/critical_facilities.geojson`
 
-Enhanced Boston / New York layers:
+Enhanced Boston / New York / Miami / San Francisco layers:
 - `data/exposure/<city>/hospitals.geojson`
 - `data/exposure/<city>/fire_stations.geojson`
 - `data/exposure/<city>/police.geojson`
@@ -244,18 +244,21 @@ Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_laye
 Download official Census tract population layers for supported cities:
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_population_layers --cities boston newyork
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_population_layers --cities miami sanfrancisco
 ```
 
 Download official CDC social-vulnerability layers for supported cities:
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_vulnerability_layers --cities boston newyork
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_vulnerability_layers --cities miami sanfrancisco
 ```
 
 Notes:
 - The downloader creates local GeoJSON layers under `data/exposure/`.
 - Roads are exported as line features.
 - Critical facilities are exported as point features from OSM `hospital`, `clinic`, `police`, and `fire_station` tags for legacy/default cities.
-- Boston and New York use a richer operational layer set: hospitals, fire stations, police, schools, and power substations.
+- Boston and New York use the richest operational layer set: hospitals, fire stations, police, schools, and power substations.
+- Miami and San Francisco now also support official Census population tracts and CDC high social-vulnerability tracts in addition to roads and critical facilities.
 - Scenario payloads now include `impact_summaries[*].exposure_summary` for any registered layer present on disk.
 - Scenario payloads now also include:
   - `impact_summaries[*].affected_road_length_m`
