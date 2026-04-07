@@ -229,6 +229,7 @@ Enhanced Boston / New York layers:
 - `data/exposure/<city>/schools.geojson`
 - `data/exposure/<city>/power_substations.geojson`
 - `data/exposure/<city>/population_tracts.geojson`
+- `data/exposure/<city>/high_svi_tracts.geojson`
 
 Download real exposure layers from OpenStreetMap Overpass:
 ```powershell
@@ -245,6 +246,11 @@ Download official Census tract population layers for supported cities:
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_population_layers --cities boston newyork
 ```
 
+Download official CDC social-vulnerability layers for supported cities:
+```powershell
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_vulnerability_layers --cities boston newyork
+```
+
 Notes:
 - The downloader creates local GeoJSON layers under `data/exposure/`.
 - Roads are exported as line features.
@@ -255,9 +261,11 @@ Notes:
   - `impact_summaries[*].affected_road_length_m`
   - `impact_summaries[*].affected_site_count_total`
   - `impact_summaries[*].population_affected_estimate`
+  - `impact_summaries[*].high_vulnerability_population_affected_estimate`
   - `impact_summaries[*].impact_headline_items`
   - `impact_summaries[*].exposure_rollup`
 - Population exposure is estimated from Census tract polygons using area-weighted overlap with the projected flood footprint.
+- High-vulnerability population exposure is estimated from CDC SVI tracts where `RPL_THEMES >= 0.8`, again using area-weighted overlap with the projected flood footprint.
 - Exposure summaries report intersections plus geometry-aware metrics:
     - polygon area in `affected_area_m2`
     - line length in `affected_length_m`

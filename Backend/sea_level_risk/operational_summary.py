@@ -175,6 +175,11 @@ def build_operational_summary(payload: dict, city_cfg: dict | None = None, scena
 
 def build_briefing_markdown(payload: dict, city_cfg: dict | None = None, scenario_name: str | None = None) -> str:
     summary = build_operational_summary(payload, city_cfg=city_cfg, scenario_name=scenario_name)
+    impact_summary = (
+        (payload.get("impact_summaries") or {}).get(summary.get("scenario_basis"))
+        or payload.get("impact_summary")
+        or {}
+    )
     generated_at = payload.get("generated_at_utc") or datetime.utcnow().isoformat()
     provider = payload.get("provider_label", "n/a")
     station = payload.get("station", "n/a")
@@ -189,6 +194,14 @@ def build_briefing_markdown(payload: dict, city_cfg: dict | None = None, scenari
     if summary["flood_area_m2"] is not None:
         flood_area = f"{summary['flood_area_m2']:,.0f} m2"
     component_count = "n/a" if summary["component_count"] is None else str(summary["component_count"])
+    affected_road_length = impact_summary.get("affected_road_length_m")
+    affected_road_length = "n/a" if affected_road_length in {None, 0} else f"{float(affected_road_length)/1000.0:.2f} km"
+    population_affected = impact_summary.get("population_affected_estimate")
+    population_affected = "n/a" if population_affected in {None, 0} else f"{int(population_affected):,}"
+    high_vulnerability_population = impact_summary.get("high_vulnerability_population_affected_estimate")
+    high_vulnerability_population = (
+        "n/a" if high_vulnerability_population in {None, 0} else f"{int(high_vulnerability_population):,}"
+    )
 
     lines = [
         f"# Coastal Flood Risk Briefing: {display_name}",
@@ -213,6 +226,9 @@ def build_briefing_markdown(payload: dict, city_cfg: dict | None = None, scenari
         f"- Flood ratio: `{flood_ratio}`",
         f"- Flood area: `{flood_area}`",
         f"- Coastal components: `{component_count}`",
+        f"- Road length affected: `{affected_road_length}`",
+        f"- Population affected: `{population_affected}`",
+        f"- High-vulnerability population affected: `{high_vulnerability_population}`",
         "",
         "## Recommended Actions",
     ]

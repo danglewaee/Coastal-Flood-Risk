@@ -8,7 +8,7 @@ Realtime sea-level forecasting + GIS flood-risk mapping project.
   - realtime API (`/realtime/forecast`, `/realtime/hotspots`, `/realtime/cities`)
   - GIS inundation mapping from DEM
   - hotspot priority scoring
-  - operational impact summaries with infrastructure and population exposure
+- operational impact summaries with infrastructure, population, and social-vulnerability exposure
   - Streamlit dashboard (forecast + 3D map)
 - `Backend/sea_level_risk/qgis/`: QGIS standardization toolkit
   - package builder

@@ -29,6 +29,15 @@
       "value_field": "population_total",
       "weight_by_area": true,
       "path": "data/exposure/boston/population_tracts.geojson"
+    },
+    {
+      "name": "high_svi_tracts",
+      "display_name": "Population in high social-vulnerability tracts",
+      "category": "vulnerability",
+      "metric": "people",
+      "value_field": "high_svi_population",
+      "weight_by_area": true,
+      "path": "data/exposure/boston/high_svi_tracts.geojson"
     }
   ],
   "newyork": [
@@ -61,6 +70,15 @@
       "value_field": "population_total",
       "weight_by_area": true,
       "path": "data/exposure/newyork/population_tracts.geojson"
+    },
+    {
+      "name": "high_svi_tracts",
+      "display_name": "Population in high social-vulnerability tracts",
+      "category": "vulnerability",
+      "metric": "people",
+      "value_field": "high_svi_population",
+      "weight_by_area": true,
+      "path": "data/exposure/newyork/high_svi_tracts.geojson"
     }
   ]
 }
