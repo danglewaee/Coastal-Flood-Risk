@@ -34,6 +34,8 @@ DEFAULT_CITY_LAYER_ORDER = ["roads", "critical_facilities"]
 ENHANCED_CITY_LAYER_ORDER = {
     "boston": ["roads", "hospitals", "fire_stations", "police", "schools", "power_substations"],
     "newyork": ["roads", "hospitals", "fire_stations", "police", "schools", "power_substations"],
+    "miami": ["roads", "hospitals", "fire_stations", "police", "schools", "power_substations"],
+    "sanfrancisco": ["roads", "hospitals", "fire_stations", "police", "schools", "power_substations"],
 }
 
 

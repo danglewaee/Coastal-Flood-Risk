@@ -234,6 +234,7 @@ Enhanced Boston / New York / Miami / San Francisco layers:
 Download real exposure layers from OpenStreetMap Overpass:
 ```powershell
 Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_layers --cities boston newyork honolulu jakarta amsterdam
+Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_exposure_layers --cities miami sanfrancisco
 ```
 
 Download every city in the registry:
@@ -257,8 +258,8 @@ Notes:
 - The downloader creates local GeoJSON layers under `data/exposure/`.
 - Roads are exported as line features.
 - Critical facilities are exported as point features from OSM `hospital`, `clinic`, `police`, and `fire_station` tags for legacy/default cities.
-- Boston and New York use the richest operational layer set: hospitals, fire stations, police, schools, and power substations.
-- Miami and San Francisco now also support official Census population tracts and CDC high social-vulnerability tracts in addition to roads and critical facilities.
+- Boston, New York, Miami, and San Francisco use the enhanced operational layer set: hospitals, fire stations, police, schools, and power substations.
+- Miami and San Francisco also support official Census population tracts and CDC high social-vulnerability tracts alongside the enhanced OSM facility layers.
 - Scenario payloads now include `impact_summaries[*].exposure_summary` for any registered layer present on disk.
 - Scenario payloads now also include:
   - `impact_summaries[*].affected_road_length_m`

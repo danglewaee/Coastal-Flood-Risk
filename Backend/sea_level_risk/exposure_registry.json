@@ -180,11 +180,39 @@
       "path": "data/exposure/miami/roads.geojson"
     },
     {
-      "name": "critical_facilities",
-      "display_name": "Critical facilities",
-      "category": "critical_services",
+      "name": "hospitals",
+      "display_name": "Hospitals & clinics",
+      "category": "healthcare",
       "metric": "points",
-      "path": "data/exposure/miami/critical_facilities.geojson"
+      "path": "data/exposure/miami/hospitals.geojson"
+    },
+    {
+      "name": "fire_stations",
+      "display_name": "Fire stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/miami/fire_stations.geojson"
+    },
+    {
+      "name": "police",
+      "display_name": "Police stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/miami/police.geojson"
+    },
+    {
+      "name": "schools",
+      "display_name": "Schools & campuses",
+      "category": "education",
+      "metric": "points",
+      "path": "data/exposure/miami/schools.geojson"
+    },
+    {
+      "name": "power_substations",
+      "display_name": "Power substations",
+      "category": "power",
+      "metric": "points",
+      "path": "data/exposure/miami/power_substations.geojson"
     },
     {
       "name": "population_tracts",
@@ -214,11 +242,39 @@
       "path": "data/exposure/sanfrancisco/roads.geojson"
     },
     {
-      "name": "critical_facilities",
-      "display_name": "Critical facilities",
-      "category": "critical_services",
+      "name": "hospitals",
+      "display_name": "Hospitals & clinics",
+      "category": "healthcare",
       "metric": "points",
-      "path": "data/exposure/sanfrancisco/critical_facilities.geojson"
+      "path": "data/exposure/sanfrancisco/hospitals.geojson"
+    },
+    {
+      "name": "fire_stations",
+      "display_name": "Fire stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/sanfrancisco/fire_stations.geojson"
+    },
+    {
+      "name": "police",
+      "display_name": "Police stations",
+      "category": "emergency_response",
+      "metric": "points",
+      "path": "data/exposure/sanfrancisco/police.geojson"
+    },
+    {
+      "name": "schools",
+      "display_name": "Schools & campuses",
+      "category": "education",
+      "metric": "points",
+      "path": "data/exposure/sanfrancisco/schools.geojson"
+    },
+    {
+      "name": "power_substations",
+      "display_name": "Power substations",
+      "category": "power",
+      "metric": "points",
+      "path": "data/exposure/sanfrancisco/power_substations.geojson"
     },
     {
       "name": "population_tracts",
