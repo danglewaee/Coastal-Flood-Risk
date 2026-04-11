@@ -193,6 +193,45 @@ def selected_impact_summary(payload: dict, scenario: str) -> dict | None:
     return payload.get("impact_summary")
 
 
+def site_type_rows_from_impact(impact: dict) -> list[dict]:
+    rows = []
+    for row in impact.get("exposure_summary", []) or []:
+        if str(row.get("metric") or "").lower() != "points":
+            continue
+        value = row.get("affected_value", row.get("affected_point_count", 0))
+        try:
+            affected_sites = int(round(float(value or 0)))
+        except (TypeError, ValueError):
+            affected_sites = 0
+        rows.append(
+            {
+                "site_type": row.get("display_name") or row.get("layer") or "Sites",
+                "category": row.get("category") or "other",
+                "affected_sites": affected_sites,
+            }
+        )
+    rows.sort(key=lambda item: item["affected_sites"], reverse=True)
+    return rows
+
+
+def render_impacted_site_types(impact: dict):
+    site_rows = site_type_rows_from_impact(impact)
+    if not site_rows:
+        return
+
+    st.markdown("#### Impacted Site Types")
+    affected_rows = [row for row in site_rows if row["affected_sites"] > 0]
+    if affected_rows:
+        cols = st.columns(min(4, len(affected_rows)))
+        for idx, row in enumerate(affected_rows[:4]):
+            cols[idx % len(cols)].metric(row["site_type"], f"{row['affected_sites']:,}")
+    else:
+        monitored = ", ".join(row["site_type"] for row in site_rows)
+        st.caption(f"No monitored priority site types intersect this scenario footprint. Monitored layers: {monitored}.")
+
+    st.dataframe(pd.DataFrame(site_rows), use_container_width=True, hide_index=True)
+
+
 st.set_page_config(page_title="Coastal Flood Risk", layout="wide")
 
 st.markdown(
@@ -468,6 +507,7 @@ with top_left:
             e5.metric("Impact Categories", f"{int(spotlight_impact.get('categories_impacted', 0))}")
             for item in spotlight_impact.get("impact_headline_items", []):
                 st.markdown(f"- {item}")
+            render_impacted_site_types(spotlight_impact)
             rollup_df = pd.DataFrame(rollup_rows).copy()
             visible_rollup_df = rollup_df[rollup_df["affected_value"].astype(float) > 0].copy()
             if visible_rollup_df.empty:
