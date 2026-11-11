@@ -166,9 +166,6 @@ def render_impacted_site_types(impact: dict):
         cols = st.columns(min(4, len(affected_rows)))
         for idx, row in enumerate(affected_rows[:4]):
             cols[idx % len(cols)].metric(row["site_type"], f"{row['affected_sites']:,}")
-    else:
-        monitored = ", ".join(row["site_type"] for row in site_rows)
-        st.caption(f"No monitored priority site types intersect this scenario footprint. Monitored layers: {monitored}.")
 
     st.dataframe(pd.DataFrame(site_rows), use_container_width=True, hide_index=True)
 

@@ -1,84 +1,62 @@
 # Coastal Flood Risk
 
-Realtime sea-level forecasting + GIS flood-risk mapping project.
+Interactive coastal flood exploration with React, Leaflet, Flask and the existing Python forecasting/GIS pipeline. No QGIS installation or map API key is required.
 
-## What this repo includes
-- `Backend/sea_level_risk/`: core pipeline and services
-  - one-step forecasting models (`lstm`, `temporal_cnn`, `axial_lstm`)
-  - realtime API (`/realtime/forecast`, `/realtime/hotspots`, `/realtime/cities`)
-  - GIS inundation mapping from DEM
-  - hotspot priority scoring
-- operational impact summaries with infrastructure, population, and social-vulnerability exposure
-  - Streamlit dashboard (forecast + 3D map)
-- `Backend/sea_level_risk/qgis/`: QGIS standardization toolkit
-  - package builder
-  - template generator
-  - layer styles (`.qml`)
+## Run
 
-## Quickstart (Windows)
+From the repository root, start the Explorer API in one terminal:
 
-### 1) Setup Python environment
 ```powershell
-powershell -ExecutionPolicy Bypass -File Backend/setup_py311_env.ps1
-Backend/.venv311/Scripts/python -m pip install -r Backend/requirements-ml.txt
+Backend\.venv311\Scripts\python -m Backend.sea_level_risk.explorer_api --port 8100
 ```
 
-### 2) Start realtime API
+Start the frontend in another terminal (Node 22.12+ or 24):
+
 ```powershell
-Backend/.venv311/Scripts/python -m Backend.sea_level_risk.realtime_api --host 127.0.0.1 --port 8100
+cd Frontend/react-app
+npm ci
+npm start
 ```
 
-### 3) Start dashboard
+Open **http://127.0.0.1:5173**. The first view reads saved GIS assets; it does not download DEMs or run a model. Use **Refresh observations** explicitly to fetch a forecast. Python 3.11 dependencies: `Backend/requirements-base.txt`; forecasts additionally require `Backend/requirements-ml.txt`.
+
+## Explore
+
+- City spotlight: select location and +20/+50/+100 cm scenario.
+- Map: click a flood polygon to inspect its area, affected roads/facilities, DEM samples and spatial overlap across scenarios.
+- Operations and Exposure: measured spatial intersections, layer availability, search and affected-only filtering.
+- Hotspots: select an area-ranked region and fly to it on the map.
+- Forecast: saved forecasts with uncertainty bands, existing backtest reports and observation provenance.
+- Compare: footprint and infrastructure exposure across saved scenarios.
+- Share: URL includes page, city, scenario and selected region. Export a full footprint or selected region as GeoJSON.
+
+## Data Required
+
+Large input data and generated GIS/model assets remain outside Git. An empty clone shows missing-data states until assets are prepared. Existing local outputs are reused:
+
+```text
+Backend/sea_level_risk/outputs/realtime/<city>/flood_plus_*.geojson
+Backend/sea_level_risk/outputs/realtime/<city>/flood_plus_*.meta.json
+data/exposure/<city>/*.geojson
+data/dem_city_cache/<city>_dem_clip.tif
+```
+
+City/layer definitions live in `city_registry.json` and `exposure_registry.json`. See [data preparation and backend tools](Backend/sea_level_risk/README.md). The React app also works with `/api` routes registered on the original `realtime_api` server.
+
+## What The Numbers Mean
+
+Flood footprints are scenario outputs from the existing coastal-connected DEM threshold workflow, or imported hydrodynamic outputs where configured. They are not annual flood probabilities. Point facilities are counted inside the footprint; line lengths use a local metric CRS; population is allocated by the flooded share of polygon area. Missing layers return `null`, distinct from zero exposure.
+
+Map files are labelled saved analyses. File timestamps are not NOAA observation timestamps. A live request may receive a historical provider fallback; the Forecast page reports that status. DEM/water-level vertical alignment remains unverified and is not presented as a validated depth estimate. Region ranking in the explorer is by area; it is not an infrastructure-weighted model.
+
+## Verify And Deploy
+
 ```powershell
-Backend/.venv311/Scripts/python -m streamlit run Backend/sea_level_risk/dashboard_app.py --server.port 8601
+Backend\.venv311\Scripts\python -m unittest discover -s Backend/tests -v
+cd Frontend/react-app
+npm run build
+# With API and Vite already running; Microsoft Edge installed:
+npm test
 ```
 
-Open:
-- Dashboard: `http://localhost:8601`
-- API health: `http://127.0.0.1:8100/health`
-
-## API endpoints
-- `GET /health`
-- `GET /realtime/cities`
-- `GET /realtime/forecast?city=honolulu&horizon=6&hours_back=96&auto_dem=1`
-- `GET /realtime/hotspots?city=honolulu&limit=10`
-
-## Forecast accuracy backtesting
-Use the rolling backtest CLI to benchmark city models against the tide-persistence baseline:
-```powershell
-Backend/.venv311/Scripts/python -m Backend.sea_level_risk.backtest --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 720
-```
-
-Outputs are written under `Backend/sea_level_risk/outputs/backtests/`.
-
-To recalibrate forecast uncertainty bands from rolling residuals:
-```powershell
-Backend/.venv311/Scripts/python -m Backend.sea_level_risk.recalibrate_uncertainty --all-noaa --horizon 6 --step-hours 6 --eval-window-hours 1440
-```
-
-To train or backtest the new `multivariate_v2` path with hourly exogenous drivers, pass a separate driver CSV:
-```powershell
-Backend/.venv311/Scripts/python -m Backend.sea_level_risk.download_weather_drivers --city boston --match-csv data/boston_hourly.csv
-Backend/.venv311/Scripts/python -m Backend.sea_level_risk.train_city_model --city boston --model-type temporal_cnn --feature-mode multivariate_v2 --drivers-csv data/boston_drivers_hourly.csv --drivers-time-col timestamp --driver-cols wind_speed,air_pressure,precipitation,river_discharge
-```
-
-## QGIS workflow
-1. Build package:
-```powershell
-Backend/.venv311/Scripts/python -m Backend.sea_level_risk.qgis.prepare_qgis_package --city honolulu --dem data/honolulu_dem.tif --realtime-dir Backend/sea_level_risk/outputs/realtime/honolulu --out-root Backend/sea_level_risk/outputs/qgis_packages
-```
-2. Generate template project in QGIS Python Console:
-```python
-import sys
-sys.path.append(r"<repo_root>")
-from Backend.sea_level_risk.qgis.create_qgis_template import create_project
-create_project(r"<repo_root>\\Backend\\sea_level_risk\\outputs\\qgis_packages\\<package_folder>")
-```
-
-See:
-- `Backend/sea_level_risk/qgis/QGIS_STANDARD.md`
-- `Backend/sea_level_risk/qgis/QGIS_TEMPLATE_GUIDE.md`
-
-## Notes
-- Large data/model artifacts are intentionally ignored by Git.
-- This repo currently tracks the backend core and GIS tooling first.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for serving the built React app through Flask/Waitress or hosting the frontend separately. The original Streamlit presentation remains available at `Backend/sea_level_risk/presentation_app.py`.

@@ -685,6 +685,10 @@ def create_app(
         models_root=models_root,
     )
 
+    from .explorer_api import explorer_blueprint
+    from .explorer_service import ExplorerService
+    app.register_blueprint(explorer_blueprint(ExplorerService(live_provider=service.predict)))
+
     @app.get("/health")
     def health():
         return jsonify({"status": "ok"})

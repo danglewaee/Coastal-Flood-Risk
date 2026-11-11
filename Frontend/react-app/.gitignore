@@ -1,0 +1,18 @@
+node_modules/
+build/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Archived assets from the previous static showcase; Vite publicDir is disabled.
+/public/
+
+.env
+.env.*
+!.env.example
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store

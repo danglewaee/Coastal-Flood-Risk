@@ -1,41 +1,64 @@
-﻿# Python
+# Python caches and environments
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .venv/
+venv/
 Backend/.venv/
-Backend/.venv311/
+Backend/.venv*/
+.pytest_cache/
+.ruff_cache/
+.cache/
+artifacts/
+test-results/
+playwright-report/
 
-# Node
+# Node dependencies and build output
 node_modules/
-Frontend/**/node_modules/
 app/node_modules/
+Frontend/**/node_modules/
+build/
+dist/
+coverage/
+Frontend/**/build/
+Frontend/**/coverage/
 
-# OS/IDE
+# Local IDE and OS files
 .vscode/
 .DS_Store
 Thumbs.db
 
-# Data outputs
+# Secrets and local service state
+.env
+.env.*
+!.env.example
+!**/.env.example
+.kaggle/
+.netlify/
+.vercel/
+
+# Generated data, model artifacts, and GIS outputs
+data/
 Backend/sea_level_risk/outputs/
 Backend/sea_level_risk/run_logs/
-Backend/sea_level_risk/*.cmd
-data/
-
-# Large datasets
 *.tar.gz
-*.pth
+*.zip
 *.h5
 *.keras
+*.pth
+*.pkl
+*.joblib
+*.tif
+*.tiff
+*.gpkg
 
-# Local app/workspace clutter
-Frontend/
+# Legacy local playgrounds kept out of deployable source
+app/
+Frontend/my-app_demo/
+Frontend/**/.git/
 Main/
-Backend/Models/*.png
+Test/
 Backend/Models/
-Backend/Models/tempCodeRunnerFile.python
-Main/*.png
-Main/tempCodeRunnerFile.python
-tmp_*.log
 Backend/app.py
+Backend/sea_level_risk/*.cmd
+test.py

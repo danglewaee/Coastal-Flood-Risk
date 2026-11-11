@@ -70,7 +70,6 @@ def fetch_payload_cached(
 def load_presentation_data(
     api_base: str,
     spotlight_city: str,
-    compare_selection: list[str],
     horizon: int,
     hours_back: int,
     auto_dem: bool,
@@ -87,6 +86,17 @@ def load_presentation_data(
         scenario_names=spotlight_scenarios,
     )
 
+    return spotlight, [], []
+
+
+def load_compare_data(
+    api_base: str,
+    compare_selection: list[str],
+    horizon: int,
+    hours_back: int,
+    auto_dem: bool,
+    selected_scenario: str,
+) -> tuple[list[dict], list[str]]:
     compare_payloads: list[dict] = []
     warnings: list[str] = []
     for city in compare_selection:
@@ -104,7 +114,7 @@ def load_presentation_data(
         except Exception as exc:
             warnings.append(f"{registry.get(city, {}).get('display_name', city)}: {exc}")
 
-    return spotlight, compare_payloads, warnings
+    return compare_payloads, warnings
 
 
 def scenario_items_from_payload(payload: dict, selected_scenario: str, show_all: bool) -> list[dict]:
@@ -225,9 +235,6 @@ def render_impacted_site_types(impact: dict):
         cols = st.columns(min(4, len(affected_rows)))
         for idx, row in enumerate(affected_rows[:4]):
             cols[idx % len(cols)].metric(row["site_type"], f"{row['affected_sites']:,}")
-    else:
-        monitored = ", ".join(row["site_type"] for row in site_rows)
-        st.caption(f"No monitored priority site types intersect this scenario footprint. Monitored layers: {monitored}.")
 
     st.dataframe(pd.DataFrame(site_rows), use_container_width=True, hide_index=True)
 
@@ -335,9 +342,6 @@ with st.sidebar:
         current_spotlight = st.session_state.presentation_view["spotlight_city"]
         if current_spotlight not in city_keys:
             current_spotlight = city_keys[0]
-        current_compare = [key for key in st.session_state.presentation_view["compare_cities"] if key in city_keys]
-        if not current_compare:
-            current_compare = compare_default or city_keys[: min(4, len(city_keys))]
         api_base = st.text_input("Realtime API URL", st.session_state.presentation_view["api_base"])
         spotlight_city = st.selectbox(
             "Spotlight city",
@@ -348,8 +352,9 @@ with st.sidebar:
         compare_cities = st.multiselect(
             "Compare cities",
             city_keys,
-            default=current_compare,
+            default=[current_spotlight],
             format_func=lambda key: registry[key].get("display_name", key),
+            key="compare_cities_selector_v2",
         )
         scenario = st.selectbox(
             "Scenario",
@@ -359,7 +364,8 @@ with st.sidebar:
         show_all = st.checkbox("Overlay all scenarios on spotlight map", value=st.session_state.presentation_view["show_all"])
         auto_dem = st.checkbox(
             "Allow auto-download DEM for missing cities",
-            value=st.session_state.presentation_view["auto_dem"],
+            value=False,
+            key="auto_dem_toggle_v2",
             help="Leave this off for stable switching. Turn it on only when preparing a city for the first time.",
         )
         horizon = st.slider("Forecast horizon (hours)", 1, 24, st.session_state.presentation_view["horizon"])
@@ -369,7 +375,7 @@ with st.sidebar:
 requested_view = {
     "api_base": api_base,
     "spotlight_city": spotlight_city,
-    "compare_cities": compare_cities or compare_default or city_keys[: min(4, len(city_keys))],
+    "compare_cities": compare_cities,
     "scenario": scenario,
     "show_all": show_all,
     "horizon": horizon,
@@ -386,7 +392,6 @@ if refresh or not st.session_state.presentation_loaded:
             spotlight, compare_payloads, fetch_warnings = load_presentation_data(
                 api_base=requested_view["api_base"],
                 spotlight_city=requested_view["spotlight_city"],
-                compare_selection=requested_view["compare_cities"],
                 horizon=requested_view["horizon"],
                 hours_back=requested_view["hours_back"],
                 auto_dem=requested_view["auto_dem"],
@@ -408,142 +413,167 @@ spotlight = st.session_state.presentation_spotlight
 compare_payloads = st.session_state.presentation_compare_payloads
 fetch_warnings = st.session_state.presentation_fetch_warnings
 
-if requested_view != loaded_view:
-    st.info("Controls changed but current view is still showing the last loaded data. Click `Refresh Presentation View` to apply the new city/settings.")
-
-for warning in fetch_warnings:
-    st.warning(f"Compare city skipped: {warning}")
-
 if not spotlight:
     st.error("No presentation data is currently loaded.")
     st.stop()
 
 spotlight_scenario = next((s for s in spotlight.get("scenarios", []) if s["scenario"] == loaded_view["scenario"]), None)
+spotlight_summary = selected_operational_summary(spotlight, loaded_view["scenario"])
+spotlight_impact = selected_impact_summary(spotlight, loaded_view["scenario"])
+
+detail_view = st.radio(
+    "Presentation section",
+    ["City Spotlight", "Operations", "Exposure", "Hotspots", "Forecast", "Compare"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
 top_left, top_right = st.columns([1.25, 1.0], gap="large")
 
 with top_left:
-    st.markdown("### City Spotlight")
-    st.markdown(
-        f"{badge(spotlight.get('provider_label', 'n/a'), 'info')} "
-        f"{badge(spotlight.get('support_tier', 'n/a'), support_tone(spotlight.get('support_tier', 'n/a')))} "
-        f"{badge(spotlight.get('model', {}).get('forecast_mode_used', 'n/a'), 'neutral')}",
-        unsafe_allow_html=True,
-    )
-    st.subheader(spotlight.get("display_name") or spotlight.get("city"))
-    if spotlight.get("city_notes"):
-        st.caption(spotlight["city_notes"])
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Peak Forecast (m)", f"{float(spotlight.get('peak_prediction_m', 0.0)):.3f}")
-    m2.metric("Station", str(spotlight.get("station", "n/a")))
-    m3.metric("Obs Delay (h)", "n/a" if spotlight.get("source", {}).get("observation_delay_hours") is None else f"{float(spotlight['source']['observation_delay_hours']):.1f}")
-    m4.metric(
-        f"{loaded_view['scenario']} Flood %",
-        "n/a" if spotlight_scenario is None else f"{float(spotlight_scenario.get('flood_ratio', 0.0))*100:.2f}%",
-    )
-
-    spotlight_summary = selected_operational_summary(spotlight, loaded_view["scenario"])
-    if spotlight_summary:
-        st.markdown("#### Operational Summary")
+    if detail_view == "City Spotlight":
+        st.markdown("### City Spotlight")
         st.markdown(
-            f"{badge(str(spotlight_summary.get('alert_level', 'n/a')).upper(), alert_tone(spotlight_summary.get('alert_level', 'n/a')))} "
-            f"{badge(str(spotlight_summary.get('confidence', 'n/a')).upper(), 'neutral')}",
+            f"{badge(spotlight.get('provider_label', 'n/a'), 'info')} "
+            f"{badge(spotlight.get('support_tier', 'n/a'), support_tone(spotlight.get('support_tier', 'n/a')))} "
+            f"{badge(spotlight.get('model', {}).get('forecast_mode_used', 'n/a'), 'neutral')}",
             unsafe_allow_html=True,
         )
-        st.markdown(f"**{spotlight_summary.get('headline', 'No operational headline available.')}**")
-        st.caption(spotlight_summary.get("summary_text", ""))
-        for item in spotlight_summary.get("recommended_actions", []):
-            st.markdown(f"- {item}")
-        st.caption(spotlight_summary.get("thresholds_note", ""))
+        st.subheader(spotlight.get("display_name") or spotlight.get("city"))
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Peak", f"{float(spotlight.get('peak_prediction_m', 0.0)):.3f} m")
+        metric_cols[1].metric(
+            "Flooded",
+            "n/a" if spotlight_scenario is None else f"{float(spotlight_scenario.get('flood_ratio', 0.0))*100:.2f}%",
+        )
+        metric_cols[2].metric("Risk", "n/a" if spotlight_scenario is None else str(spotlight_scenario.get("risk_level", "n/a")).upper())
+        metric_cols[3].metric(
+            "Delay",
+            "n/a" if spotlight.get("source", {}).get("observation_delay_hours") is None else f"{float(spotlight['source']['observation_delay_hours']):.1f} h",
+        )
+        st.caption(f"Station {spotlight.get('station', 'n/a')} | Scenario {loaded_view['scenario']} | Horizon {loaded_view['horizon']}h")
 
-        briefing_md = build_briefing_markdown(
-            spotlight,
-            city_cfg=registry.get(loaded_view["spotlight_city"], {}),
-            scenario_name=spotlight_summary.get("scenario_basis"),
-        )
-        st.download_button(
-            "Download Operational Briefing",
-            data=briefing_md,
-            file_name=f"{loaded_view['spotlight_city']}_{spotlight_summary.get('scenario_basis') or 'briefing'}_briefing.md",
-            mime="text/markdown",
-        )
-
-    spotlight_impact = selected_impact_summary(spotlight, loaded_view["scenario"])
-    if spotlight_impact:
-        st.markdown("#### Priority Hotspots")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Hotspots Ranked", f"{int(spotlight_impact.get('hotspot_count', 0))}")
-        c2.metric(
-            "Largest Hotspot",
-            "n/a" if spotlight_impact.get("largest_hotspot_area_m2") is None else f"{float(spotlight_impact['largest_hotspot_area_m2']):,.0f} m2",
-        )
-        c3.metric("Exposure Layers", f"{int(spotlight_impact.get('exposure_layers_available', 0))}")
-        for hotspot in spotlight_impact.get("top_hotspots", [])[:3]:
+    elif detail_view == "Operations":
+        st.markdown("### Operations")
+        if spotlight_summary:
             st.markdown(
-                f"- **Rank {int(hotspot['rank'])}** | {str(hotspot['risk_level']).upper()} | "
-                f"score {float(hotspot['priority_score']):.1f} | "
-                f"{float(hotspot['area_m2']):,.0f} m2"
+                f"{badge(str(spotlight_summary.get('alert_level', 'n/a')).upper(), alert_tone(spotlight_summary.get('alert_level', 'n/a')))} "
+                f"{badge(str(spotlight_summary.get('confidence', 'n/a')).upper(), 'neutral')}",
+                unsafe_allow_html=True,
             )
-        rollup_rows = spotlight_impact.get("exposure_rollup", [])
-        if rollup_rows:
-            st.markdown("#### Operational Impact")
-            e1, e2, e3, e4, e5 = st.columns(5)
-            e1.metric(
-                "Road Length Affected",
+        else:
+            st.info("No operational summary is available for this scenario.")
+
+        if spotlight_impact:
+            st.markdown("#### Impact Snapshot")
+            impact_cols = st.columns(4)
+            impact_cols[0].metric(
+                "Roads",
                 "n/a" if spotlight_impact.get("affected_road_length_m") is None else f"{float(spotlight_impact['affected_road_length_m'])/1000.0:.2f} km",
             )
-            e2.metric("Priority Sites Affected", f"{int(spotlight_impact.get('affected_site_count_total', 0))}")
-            e3.metric(
-                "Population Affected",
+            impact_cols[1].metric("Priority Sites", f"{int(spotlight_impact.get('affected_site_count_total', 0))}")
+            impact_cols[2].metric(
+                "Population",
                 "n/a" if spotlight_impact.get("population_affected_estimate") in {None, 0} else f"{int(spotlight_impact['population_affected_estimate']):,}",
             )
-            e4.metric(
-                "High-Vulnerability Population",
-                "n/a"
-                if spotlight_impact.get("high_vulnerability_population_affected_estimate") in {None, 0}
-                else f"{int(spotlight_impact['high_vulnerability_population_affected_estimate']):,}",
-            )
-            e5.metric("Impact Categories", f"{int(spotlight_impact.get('categories_impacted', 0))}")
-            for item in spotlight_impact.get("impact_headline_items", []):
-                st.markdown(f"- {item}")
+            impact_cols[3].metric("Categories", f"{int(spotlight_impact.get('categories_impacted', 0))}")
+
+    elif detail_view == "Exposure":
+        st.markdown("### Impacted Exposure")
+        if spotlight_impact:
             render_impacted_site_types(spotlight_impact)
-            rollup_df = pd.DataFrame(rollup_rows).copy()
-            visible_rollup_df = rollup_df[rollup_df["affected_value"].astype(float) > 0].copy()
-            if visible_rollup_df.empty:
-                visible_rollup_df = rollup_df
-            st.dataframe(
-                visible_rollup_df[["display_name", "affected_value", "affected_unit"]],
-                use_container_width=True,
-                hide_index=True,
-            )
-        exposure_rows = spotlight_impact.get("exposure_summary", [])
-        if exposure_rows:
-            st.markdown("#### Exposure Detail")
-            exposure_df = pd.DataFrame(exposure_rows).copy()
-            for col in ["affected_area_m2", "affected_length_m"]:
-                if col in exposure_df.columns:
-                    exposure_df[col] = exposure_df[col].map(lambda v: round(float(v), 1))
-            if "affected_value" in exposure_df.columns:
-                exposure_df["affected_value"] = exposure_df["affected_value"].map(lambda v: round(float(v), 1) if isinstance(v, float) else v)
-            st.dataframe(exposure_df, use_container_width=True, hide_index=True)
-
-    forecast_points = spotlight.get("forecast", [])
-    if forecast_points:
-        st.markdown("#### Forecast Trajectory")
-        forecast_df = pd.DataFrame(forecast_points)
-        if {"p10_m", "p50_m", "p90_m"}.issubset(forecast_df.columns):
-            st.line_chart(forecast_df, x="hour_ahead", y=["p10_m", "p50_m", "p90_m"])
-            if spotlight.get("model", {}).get("uncertainty", {}).get("method"):
-                st.caption(f"Uncertainty method: {spotlight['model']['uncertainty']['method']}")
+            rollup_rows = spotlight_impact.get("exposure_rollup", [])
+            if rollup_rows:
+                rollup_df = pd.DataFrame(rollup_rows).copy()
+                visible_rollup_df = rollup_df[rollup_df["affected_value"].astype(float) > 0].copy()
+                if visible_rollup_df.empty:
+                    visible_rollup_df = rollup_df
+                st.dataframe(
+                    visible_rollup_df[["display_name", "affected_value", "affected_unit"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            exposure_rows = spotlight_impact.get("exposure_summary", [])
+            if exposure_rows:
+                with st.expander("Exposure detail"):
+                    exposure_df = pd.DataFrame(exposure_rows).copy()
+                    for col in ["affected_area_m2", "affected_length_m"]:
+                        if col in exposure_df.columns:
+                            exposure_df[col] = exposure_df[col].map(lambda v: round(float(v), 1))
+                    if "affected_value" in exposure_df.columns:
+                        exposure_df["affected_value"] = exposure_df["affected_value"].map(lambda v: round(float(v), 1) if isinstance(v, float) else v)
+                    st.dataframe(exposure_df, use_container_width=True, hide_index=True)
         else:
-            st.line_chart(forecast_df, x="hour_ahead", y="sea_level_m")
+            st.info("No exposure summary is available for this scenario.")
 
-    if spotlight_scenario:
-        c1, c2, c3 = st.columns(3)
-        c1.metric(f"{loaded_view['scenario']} Flood Area", f"{float(spotlight_scenario.get('flood_area_m2', 0.0)):,.0f} m2")
-        c2.metric(f"{loaded_view['scenario']} Components", f"{int(spotlight_scenario.get('component_count', 0))}")
-        c3.metric(f"{loaded_view['scenario']} Risk", str(spotlight_scenario.get("risk_level", "n/a")).upper())
+    elif detail_view == "Hotspots":
+        st.markdown("### Priority Hotspots")
+        if spotlight_impact:
+            hotspot_cols = st.columns(3)
+            hotspot_cols[0].metric("Ranked", f"{int(spotlight_impact.get('hotspot_count', 0))}")
+            hotspot_cols[1].metric(
+                "Largest",
+                "n/a" if spotlight_impact.get("largest_hotspot_area_m2") is None else f"{float(spotlight_impact['largest_hotspot_area_m2']):,.0f} m2",
+            )
+            hotspot_cols[2].metric("Layers", f"{int(spotlight_impact.get('exposure_layers_available', 0))}")
+            hotspot_rows = spotlight_impact.get("top_hotspots", [])[:5]
+            if hotspot_rows:
+                hotspot_df = pd.DataFrame(
+                    [
+                        {
+                            "rank": int(row["rank"]),
+                            "risk": str(row["risk_level"]).upper(),
+                            "score": round(float(row["priority_score"]), 1),
+                            "area_m2": round(float(row["area_m2"]), 1),
+                        }
+                        for row in hotspot_rows
+                    ]
+                )
+                st.dataframe(hotspot_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hotspot data is available for this scenario.")
+
+    elif detail_view == "Forecast":
+        st.markdown("### Forecast")
+        forecast_points = spotlight.get("forecast", [])
+        if forecast_points:
+            forecast_df = pd.DataFrame(forecast_points)
+            if {"p10_m", "p50_m", "p90_m"}.issubset(forecast_df.columns):
+                st.line_chart(forecast_df, x="hour_ahead", y=["p10_m", "p50_m", "p90_m"])
+            else:
+                st.line_chart(forecast_df, x="hour_ahead", y="sea_level_m")
+        else:
+            st.info("No forecast trajectory is available.")
+        if spotlight_scenario:
+            footprint_cols = st.columns(3)
+            footprint_cols[0].metric("Flood Area", f"{float(spotlight_scenario.get('flood_area_m2', 0.0)):,.0f} m2")
+            footprint_cols[1].metric("Components", f"{int(spotlight_scenario.get('component_count', 0))}")
+            footprint_cols[2].metric("Risk", str(spotlight_scenario.get("risk_level", "n/a")).upper())
+
+    elif detail_view == "Compare":
+        st.markdown("### Cross-city Compare")
+        with st.spinner("Loading compare cities..."):
+            compare_payloads, compare_warnings = load_compare_data(
+                api_base=loaded_view["api_base"],
+                compare_selection=loaded_view["compare_cities"],
+                horizon=loaded_view["horizon"],
+                hours_back=loaded_view["hours_back"],
+                auto_dem=False,
+                selected_scenario=loaded_view["scenario"],
+            )
+        compare_rows = [scenario_summary_row(payload, loaded_view["scenario"]) for payload in compare_payloads]
+        if compare_rows:
+            compare_df = pd.DataFrame(compare_rows).sort_values(
+                ["support_tier", "flood_ratio_pct", "peak_prediction_m"],
+                ascending=[True, False, False],
+                na_position="last",
+            )
+            st.dataframe(compare_df, use_container_width=True, hide_index=True)
+            risk_df = compare_df[["city", "flood_ratio_pct", "flood_area_m2"]].set_index("city")
+            if not risk_df.empty:
+                st.bar_chart(risk_df)
+        else:
+            st.info("Select compare cities in the sidebar, then refresh the view.")
 
 with top_right:
     st.markdown("### Spotlight Flood Map")
@@ -573,39 +603,3 @@ with top_right:
         st.markdown(" | ".join(legend), unsafe_allow_html=True)
     else:
         st.warning("No spotlight map could be rendered for the selected city/scenario.")
-
-st.markdown("---")
-st.markdown("### Cross-city Compare")
-
-compare_rows = [scenario_summary_row(payload, loaded_view["scenario"]) for payload in compare_payloads]
-if compare_rows:
-    compare_df = pd.DataFrame(compare_rows).sort_values(["support_tier", "flood_ratio_pct", "peak_prediction_m"], ascending=[True, False, False], na_position="last")
-
-    t1, t2 = st.columns([1.4, 1.0], gap="large")
-    with t1:
-        st.dataframe(compare_df, use_container_width=True, hide_index=True)
-
-    with t2:
-        risk_df = compare_df[["city", "flood_ratio_pct", "flood_area_m2"]].set_index("city")
-        if not risk_df.empty:
-            st.markdown("#### Scenario Compare")
-            st.bar_chart(risk_df)
-else:
-    st.warning("No compare-city payloads are currently available.")
-
-st.markdown("### Executive Takeaways")
-takeaway_cols = st.columns(min(4, max(1, len(compare_rows))))
-for idx, row in enumerate(compare_rows[: len(takeaway_cols)]):
-    tone = support_tone(row["support_tier"])
-    with takeaway_cols[idx]:
-        st.markdown(f"<div class='glass'><strong>{row['city']}</strong><br/>{badge(row['support_tier'], tone)}<br/><br/>Peak forecast: <strong>{row['peak_prediction_m']:.3f} m</strong><br/>{loaded_view['scenario']}: <strong>{0.0 if row['flood_ratio_pct'] is None else row['flood_ratio_pct']:.2f}%</strong><br/>Delay: <strong>{'n/a' if row['delay_h'] is None else str(row['delay_h']) + ' h'}</strong></div>", unsafe_allow_html=True)
-
-st.markdown("### Method And Limits")
-st.markdown(
-    """
-    - Realtime water level comes from official NOAA gauges where available, and IOC public feeds where NOAA is unavailable.
-    - Forecast uses city-specific deep-learning models with multivariate derived features and calibrated uncertainty bands where hourly training histories are available; lower-data cities fall back to a tide-aware short-horizon baseline.
-    - Flood polygons are GIS threshold outputs on Copernicus DEM, filtered to coast-connected components.
-    - `Amsterdam` is shown as a delayed regional proxy. It should not be presented as a direct Amsterdam city gauge.
-    """
-)

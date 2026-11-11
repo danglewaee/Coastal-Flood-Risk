@@ -59,7 +59,10 @@ def _rank_hotspots_dataframe(scenario_records: list[dict]) -> gpd.GeoDataFrame:
             )
 
     if not rows:
-        raise RuntimeError("No scenario polygons available to build hotspots.")
+        return gpd.GeoDataFrame(
+            columns=["scenario", "rank", "priority_score", "area_m2", "centroid_lon", "centroid_lat", "geometry"],
+            geometry="geometry", crs="EPSG:4326",
+        )
 
     df = pd.DataFrame(rows)
     area_norm = (df["area_m2"] - df["area_m2"].min()) / (df["area_m2"].max() - df["area_m2"].min() + 1e-9)

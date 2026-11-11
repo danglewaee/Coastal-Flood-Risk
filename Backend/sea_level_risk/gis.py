@@ -289,6 +289,21 @@ def compute_exposure(
     flood = gpd.read_file(flood_geojson)
     layer = gpd.read_file(layer_path)
 
+    return compute_exposure_frames(
+        flood, layer, layer_name, value_field=value_field, weight_by_area=weight_by_area
+    )
+
+
+def compute_exposure_frames(
+    flood: gpd.GeoDataFrame,
+    layer: gpd.GeoDataFrame,
+    layer_name: str = "layer",
+    *,
+    value_field: str | None = None,
+    weight_by_area: bool = False,
+) -> dict:
+    """Measure exposure against a dissolved footprint, including a selected component."""
+
     if flood.empty or layer.empty:
         return {
             "layer": layer_name,
@@ -299,8 +314,16 @@ def compute_exposure(
             "affected_weighted_value": 0.0,
         }
 
+    if flood.crs is None or layer.crs is None:
+        raise ValueError("Flood and exposure layers must declare a CRS.")
+
+    # Dissolving prevents duplicate counts where flood polygons overlap.
+    flood = gpd.GeoDataFrame(geometry=[flood.geometry.union_all()], crs=flood.crs)
     if flood.crs != layer.crs:
         layer = layer.to_crs(flood.crs)
+
+    candidates = layer.sindex.query(flood.geometry.iloc[0], predicate="intersects")
+    layer = layer.iloc[candidates].copy()
 
     intersection = gpd.overlay(layer, flood, how="intersection", keep_geom_type=False)
     if intersection.empty:
@@ -320,8 +343,14 @@ def compute_exposure(
     point_mask = geom_types.isin(["point", "multipoint"])
 
     area = float(metric_gdf.loc[polygon_mask, "geometry"].area.sum()) if polygon_mask.any() else 0.0
-    length = float(metric_gdf.loc[line_mask, "geometry"].length.sum()) if line_mask.any() else 0.0
-    point_count = int(point_mask.sum())
+    length = 0.0
+    if line_mask.any():
+        local_crs = flood.to_crs(4326).estimate_utm_crs()
+        length = float(intersection.loc[line_mask, "geometry"].to_crs(local_crs).length.sum())
+    point_count = sum(
+        len(geom.geoms) if geom.geom_type == "MultiPoint" else 1
+        for geom in metric_gdf.loc[point_mask, "geometry"]
+    )
     weighted_value = 0.0
 
     if value_field and value_field in layer.columns:
